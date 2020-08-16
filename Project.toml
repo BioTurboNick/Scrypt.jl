@@ -5,3 +5,10 @@ version = "0.0.1"
 
 [deps]
 Nettle = "49dea1ee-f6fa-5aa6-9a11-8816cee7d4b9"
+
+[compat]
+julia = "1.5"
+Nettle = "0.5"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
