@@ -5,18 +5,18 @@ struct ScryptParameters
     N::UInt  # processing cost
     p::UInt  # parallelization
 
-    function ScryptParameters(r::UInt, N::UInt, p::UInt)
+    function ScryptParameters(r, N, p)
         r > 0 || ArgumentError("r Must be > 0.") |> throw
         N > 0 || ArgumentError("N Must be > 0.") |> throw
         p > 0 || ArgumentError("p Must be > 0.") |> throw
 
-        parameters = new(r, N, p)
+        parameters = new(UInt(r), UInt(N), UInt(p))
 
-        p ≤ maxuint * hashlength(scrypt) / (r * elementunitlength(scrypt)) || 
-            ArgumentError("p and r must satisfy the relationship p ≤ (2^32 - 1) * hashlength / (r * elementunitlength)") |> throw
+        p ≤ maxuint * hashlength(parameters) / elementlength(parameters) || 
+            ArgumentError("p and r must satisfy the relationship p ≤ (2^32 - 1) * hashlength / elementlength)") |> throw
 
-        r * N * bytes(elementunitlength(scrypt)) ≤ Sys.total_memory() ||
-            ArgumentError("r and N must satisfy the relationship r * N * elementunitlength / 8 ≤ Sys.total_memory") |> throw
+        r * N * elementunitlength(parameters) ≤ Sys.total_memory() ||
+            ArgumentError("r and N must satisfy the relationship r * N * elementunitlength ≤ Sys.total_memory") |> throw
 
         parameters
     end
@@ -25,12 +25,11 @@ end
 
 bytes(x) = x ÷ 8
 
-hashlength(::ScryptParameters) = 256
+hashbitslength(::ScryptParameters) = 256
+hashlength(x::ScryptParameters) = hashbitslength(x) |> bytes
 
-elementunitlength(::ScryptParameters) = 1024
-
-elementlength(x::ScryptParameters) = elementunitlength * x.r
-
-elementblockcount(x::ScryptParameters) = elementlength(x) ÷ (8 * sizeof(SalsaBlock))
-
-workingbufferlength(x::ScryptParameters) = bytes(elementunitlength(x)) * x.r * x.p
+elementunitbitslength(::ScryptParameters) = 1024
+elementunitlength(x::ScryptParameters) = elementunitbitslength(x) |> bytes
+elementlength(x::ScryptParameters) = elementunitlength(x) * x.r
+bufferlength(x::ScryptParameters) = elementlength(x) * x.p
+elementblockcount(x::ScryptParameters) = elementlength(x) ÷ sizeof(SalsaBlock)

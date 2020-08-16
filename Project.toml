@@ -1,2 +1,7 @@
+name = "Scrypt"
+uuid = "2fdf5542-5ed4-5642-8140-83dcf60a5f79"
+authors = ["Nicholas Bauer <nicholasbauer@outlook.com>"]
+version = "0.0.1"
+
 [deps]
 Nettle = "49dea1ee-f6fa-5aa6-9a11-8816cee7d4b9"

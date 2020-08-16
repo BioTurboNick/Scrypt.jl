@@ -2,7 +2,8 @@ module Scrypt
 
 using Nettle
 
-include("data/ScryptAlgorithm.jl")
+include("data/SalsaBlock.jl")
+include("data/ScryptParameters.jl")
 
 
 SALSA_BLOCK_LENGTH_UINT32 = 16
@@ -10,54 +11,60 @@ SALSA_BLOCK_LENGTH_UINT32 = 16
 salsa_block_reorder_indexes = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;  4;  9; 14;  3;  8]
 salsa_block_restore_indexes = [ 5;  2; 15; 12;  9;  6;  3; 16;  3; 10;  7;  4;  1; 14; 11;  8]
 
-function scrypt(parameters::ScryptParameters, key, salt::Vector{UInt8}, derivedkeylength)
+function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{UInt8}, derivedkeylength)
     derivedkeylength > 0 || ArgumentError("Must be > 0.") |> throw
 
-    buffer = pbkdf2_sha256_1(key, salt, workingbufferlength(parameters))
+    buffer = pbkdf2_sha256_1(key, salt, bufferlength(parameters))
+    parallelbuffer = reshape(buffer, (elementlength(parameters), parameters.p))
 
-
+    for i ∈ 1:parameters.p
+        smix!(view(parallelbuffer, :, i), parameters)
+    end
 
     derivedkey = pbkdf2_sha256_1(key, buffer, derivedkeylength)
 end
 
-function pbkdf2_sha256_1(key, salt::Vector{Uint8}, derivedkeylength)
-    function digest(i)
-        salt[end] = i
-        hexdigest("sha256", key, salt) |> Vector{UInt8}
+function pbkdf2_sha256_1(key, salt::Vector{UInt8}, derivedkeylength)
+    function saltdigest(i)
+        salt[end-3:end] = reinterpret(UInt8, [UInt32(i)]) |> reverse
+        digest("sha256", key, salt)
     end
 
     hashlength = 256 / 8
-    blocks = derivedkeylength / hashlength
-    blocks < 256 || ArgumentError("derivedkeylength must be less than 256 bytes.") |> throw
+    blocks = ceil(derivedkeylength ÷ hashlength) |> Int
+    lastblockbytes = derivedkeylength - (blocks - 1) * hashlength
     
     salt = copy(salt)
-    push!(0)
+    append!(salt, zeros(UInt8, 4))
+    
+    derivedkey = vcat((saltdigest(i) for i ∈ 1:blocks)...)
 
-    return vcat(digest(i) for i ∈ 1:blocks)
+    return lastblockbytes < hashlength ? derivedkey[1:end-hashlength+lastblockbytes] : derivedkey
 end
-
-element(parameters::ScryptParameters) = zeros(SalsaBlock, elementblockcount(parameters))
 
 prepareblock(block) = reinterpret(SalsaBlock, view(reinterpret(UInt32, reshape(block, 1)), salsa_block_reorder_indexes))
 restoreblock(block) = reinterpret(SalsaBlock, view(reinterpret(UInt32, reshape(block, 1)), salsa_block_restore_indexes))
 
 function preparedata!(workingbuffer, element)
-    workingbuffer[2:end] = [prepareblock(view(element, i)) for i ∈ [1:length(element) - 1]] # hopefully this will optimize to write directly rather than creating an intermediate array
-    workingbuffer[1] = prepareblock(view(element, length(element)))
+    workingbuffer[2:end] = vcat((prepareblock(view(element, i)) for i ∈ 1:length(element) - 1)...) # hopefully this will optimize to write directly rather than creating an intermediate array
+    workingbuffer[1] = prepareblock(view(element, length(element))) |> first
+    ()
 end
 
 function restoredata!(element, workingbuffer)
-    element[1:end - 1] = [restoreblock(view(workingbuffer, i) for i ∈ [2:length(workingbuffer)])]
-    element[end] = restoreblock(view(element, 1))
+    element[1:end - 1] = vcat((restoreblock(view(workingbuffer, i)) for i ∈ 2:length(workingbuffer))...)
+    element[end] = restoreblock(view(element, 1)) |> first
+    ()
 end
 
 function mixblock!(currentblock, previousblock)
-    currentblock ⊻= previousblock
+    currentblock[1] = reinterpret(SalsaBlock, reinterpret(UInt128, reshape(currentblock, 1)) .⊻ reinterpret(UInt128, reshape(previousblock, 1))) |> first
     salsa20!(currentblock, 8)
+    ()
 end
 
 function salsa20!(block, iterations)
-    splitblock = reshape(reinterpret(UInt32, reshape(block, 1)), 4, 4)
+    splitblock = reshape(reinterpret(UInt32, reshape(block, 1)), (4, 4))
     inputblock = copy(splitblock)
 
     for i ∈ 1:iterations
@@ -66,10 +73,20 @@ function salsa20!(block, iterations)
         splitblock[:, 1] = salsa(splitblock[:, 3], splitblock[:, 4], splitblock[:, 1], 13)
         splitblock[:, 2] = salsa(splitblock[:, 4], splitblock[:, 1], splitblock[:, 2], 18)
 
-        splitblock = splitblock'
+        salsatranspose!(splitblock)
     end
 
     splitblock .+= inputblock
+    block[1] = reinterpret(SalsaBlock, reshape(splitblock, 16)) |> first
+    ()
+end
+
+function salsatranspose!(block)
+    toline3 = block[[2, 3, 4, 1], 1]
+    block[:, 1] = block[[4, 1, 2, 3], 3]
+    block[:, 3] = toline3
+    block[:, 4] = block[[3, 4, 1, 2], 4]
+    ()
 end
 
 function salsa(addend1::AbstractVector{UInt32}, addend2::AbstractVector{UInt32}, xor_operand::AbstractVector{UInt32}, rotationmagnitude)
@@ -81,60 +98,67 @@ function fillscryptblock!(workingbuffer, shufflebuffer, N, r)
     scryptblock = zeros(SalsaBlock, 2 * r, N)
 
     for i ∈ 1:N
-        scryptblock[1, i] = previousblock = lastblock = view(workingbuffer, 1)
-        for j ∈ 2:length(workingbuffer) - 1
+        previousblock = lastblock = view(workingbuffer, 1)
+        scryptblock[1, i] = copy(previousblock)
+        for j ∈ 2:length(workingbuffer)
             currentblock = view(workingbuffer, j)
-            scryptblock[j, i] = currentblock
-            k = j ÷ 2 + 1
-            k += iseven(j) ? 0 : halfblockcount
+            scryptblock[j, i] = copy(currentblock)
+            k = (j - 1) ÷ 2 + 1
+            iseven(j) && (k += halfblockcount)
             mixblock!(currentblock, previousblock)
-            shufflebuffer[k] = previousblock = currentblock
+            previousblock = currentblock
+            shufflebuffer[k] = copy(currentblock)
         end
         mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock
+        shufflebuffer[1] = copy(lastblock)
 
-        workingbuffer, shufflebuffer = shufflebuffer, workingbuffer
+        workingbuffer[:], shufflebuffer[:] = shufflebuffer, workingbuffer
     end
     
     return scryptblock
 end
 
-integerify(workingbuffer, N) = reinterpret(UInt32, reshape(workingbuffer, 1))[5] % N
+integerify(workingbuffer, N) = reinterpret(UInt32, reshape(workingbuffer, 1))[5] % N + 1
 
 function mix!(workingbuffer, scryptblock, shufflebuffer, N)
     halfblockcount = length(workingbuffer) ÷ 2
     for i ∈ 1:N
         n = integerify(view(workingbuffer, 1), N)
         blockelement = view(scryptblock, :, n)
-        previousblock = lastblock = view(workingbuffer, 1) ⊻ view(blockelement, 1)
-        for j ∈ 2:length(workingbuffer) - 1
-            currentblock = view(workingbuffer, j) ⊻ view(blockelement, j)
-            k = j ÷ 2 + 1
-            k += iseven(j) ? 0 : halfblockcount
+        previousblock = lastblock = view(reinterpret(SalsaBlock, reinterpret(UInt128, reshape(view(workingbuffer, 1), 1)) .⊻ reinterpret(UInt128, reshape(view(blockelement, 1), 1))), 1)
+        for j ∈ 2:length(workingbuffer)
+            currentblock = view(reinterpret(SalsaBlock, reinterpret(UInt128, reshape(view(workingbuffer, j), 1)) .⊻ reinterpret(UInt128, reshape(view(blockelement, j), 1))), 1)
+            k = (j - 1) ÷ 2 + 1
+            iseven(j) && (k += halfblockcount)
             mixblock!(currentblock, previousblock)
-            shufflebuffer[k] = previousblock = currentblock
+            previousblock = currentblock
+            shufflebuffer[k] = copy(currentblock)
         end
         mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock
+        shufflebuffer[1] = copy(lastblock)
 
-        workingbuffer, shufflebuffer = shufflebuffer, workingbuffer
+        workingbuffer[:], shufflebuffer[:] = shufflebuffer, workingbuffer
     end
 end
 
-function smix!(element::Vector{SalsaBlock}, parameters::ScryptParameters)
-    workingbuffer = element(parameters)
-    shufflebuffer = element(parameters)
+salsabuffer(parameters::ScryptParameters) = zeros(SalsaBlock, elementblockcount(parameters))
 
-    preparedata!(workingbuffer, element)
+function smix!(element::AbstractVector{UInt8}, parameters::ScryptParameters)
+    blockelement = reinterpret(SalsaBlock, element)
+    workingbuffer = salsabuffer(parameters)
+    shufflebuffer = salsabuffer(parameters)
+
+    preparedata!(workingbuffer, blockelement)
     scryptblock = fillscryptblock!(workingbuffer, shufflebuffer, parameters.N, parameters.r)
     mix!(workingbuffer, scryptblock, shufflebuffer, parameters.N)
-    restoredata!(element, workingbuffer)
+    restoredata!(blockelement, workingbuffer)
 end
 
 
 
 
 
-export ScryptAlgorithm
+export scrypt
+export ScryptParameters
 
 end
