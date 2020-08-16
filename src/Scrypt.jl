@@ -99,18 +99,18 @@ function fillscryptblock!(workingbuffer, shufflebuffer, N, r)
 
     for i ∈ 1:N
         previousblock = lastblock = view(workingbuffer, 1:1)
-        scryptblock[1, i] = copy(previousblock)
+        scryptblock[1, i] = previousblock |> first
         for j ∈ 2:length(workingbuffer)
             currentblock = view(workingbuffer, j:j)
-            scryptblock[j, i] = copy(currentblock)
+            scryptblock[j, i] = currentblock |> first
             k = (j - 2) ÷ 2 + 2
             iseven(j) || (k += halfblockcount)
             mixblock!(currentblock, previousblock)
             previousblock = currentblock
-            shufflebuffer[k] = copy(currentblock)
+            shufflebuffer[k] = currentblock |> first
         end
         mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = copy(lastblock)
+        shufflebuffer[1] = lastblock |> first
 
         workingbuffer[:] = shufflebuffer
     end
@@ -125,17 +125,17 @@ function mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, N)
     for i ∈ 1:N
         n = integerify(view(workingbuffer, 1:1), N)
         scryptblockelement = view(scryptblock, :, n)
-        previousblock = lastblock = view(reinterpret(SalsaBlock, reinterpret(UInt128, view(workingbuffer, 1:1)) .⊻ reinterpret(UInt128, view(scryptblockelement, 1:1))), 1)
+        previousblock = lastblock = reinterpret(SalsaBlock, reinterpret(UInt128, view(workingbuffer, 1:1)) .⊻ reinterpret(UInt128, view(scryptblockelement, 1:1)))
         for j ∈ 2:length(workingbuffer)
-            currentblock = view(reinterpret(SalsaBlock, reinterpret(UInt128, view(workingbuffer, j:j)) .⊻ reinterpret(UInt128, view(scryptblockelement, j:j))), 1)
+            currentblock = reinterpret(SalsaBlock, reinterpret(UInt128, view(workingbuffer, j:j)) .⊻ reinterpret(UInt128, view(scryptblockelement, j:j)))
             k = (j - 2) ÷ 2 + 2
             iseven(j) || (k += halfblockcount)
             mixblock!(currentblock, previousblock)
             previousblock = currentblock
-            shufflebuffer[k] = copy(currentblock)
+            shufflebuffer[k] = currentblock |> first
         end
         mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = copy(lastblock)
+        shufflebuffer[1] = lastblock |> first
 
         workingbuffer[:] = shufflebuffer
     end
