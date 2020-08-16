@@ -12,5 +12,5 @@ using Test
               scrypt(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64),
               scrypt(ScryptParameters(8, 16384, 1), Vector{UInt8}(b"pleaseletmein"), Vector{UInt8}(b"SodiumChloride"), 64)]
 
-    @test expected .== output    
+    @test all(expected .== output)
 end
