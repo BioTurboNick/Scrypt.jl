@@ -1,6 +1,6 @@
 # Scrypt.jl
 
-[![Build Status](https://travis-ci.com/github/BioTurboNick/Scrypt.jl?branch=master)](https://travis-ci.com/github/BioTurboNick/Scrypt.jl)
+[![Build Status](https://travis-ci.com/BioTurboNick/Scrypt.jl.svg?branch=master)](https://travis-ci.com/github/BioTurboNick/Scrypt.jl)
 [![codecov.io](https://codecov.io/github/BioTurboNick/Scrypt.jl/coverage.svg?branch=master)](https://codecov.io/github/BioTurboNick/Scrypt.jl?branch=master)
 
 Port of my [Skryptonite](https://github.com/BioTurboNick/Skryptonite) C++/C# implementation of the Scrypt password-bassed key derivation algorithm / hash function, in pure Julia.
