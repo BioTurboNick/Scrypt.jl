@@ -16,5 +16,6 @@ One thing this lacks right now is parallelization for the p parameter.
 Optimization path:
  - Initial: 7.511 s (93602212 allocations: 8.63 GiB) (commit )
  - Moved constant array selectors into global constants: 7.206 s (81019300 allocations: 7.32 GiB) (commit )
- - Just prior to the critical inner loop, copied the data to an MMatrix from StaticArrays: 1.455 s (81019300 allocations: 3.29 GiB) (commit 
- -  
+ - Just prior to the critical inner loop, copied the data to an MMatrix from StaticArrays: 1.455 s (81019300 allocations: 3.29 GiB) (commit )
+ - Refactored and simplified: 1.642 s (81281446 allocations: 3.27 GiB) (commit )
+ - 

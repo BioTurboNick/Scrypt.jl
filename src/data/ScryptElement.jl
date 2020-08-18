@@ -4,14 +4,15 @@
 
 A 2r vector of 512-bit (64-byte) SalsaBlocks that forms the chunk of data that
 scrypt works on at one time. It may either be standalone or may be created from
-existing data, including a view into ScryptBlock.
+existing data, including a view into ScryptBlock. Indexing produces SalsaBlock
+objects with a view of the underlying data.
 """
-mutable struct ScryptElement{T <: AbstractVector{SalsaBlock}}
+mutable struct ScryptElement{T <: AbstractVector{Salsa512}}
     data::T
     r::Int
 
-    ScryptElement(r::Int) = new{Vector{SalsaBlock}}(Vector{SalsaBlock}(undef, 2r), r)
-    function ScryptElement(r::Int, x::AbstractVector{SalsaBlock})
+    ScryptElement(r::Int) = new{Vector{Salsa512}}(Vector{Salsa512}(undef, 2r), r)
+    function ScryptElement(r::Int, x::AbstractVector{Salsa512})
         length(x) == 2r || ArgumentError("x must be of length 2r")
         new{typeof(x)}(x, r)
     end
@@ -23,16 +24,19 @@ function swap!(x::ScryptElement, y::ScryptElement)
 end
 
 import Base.getindex
-getindex(x::ScryptElement, i) = getindex(x.data, i)
+getindex(x::ScryptElement, i) = SalsaBlock(@view x.data[i:i])
 
 import Base.setindex!
-setindex!(x::ScryptElement, y::SalsaBlock, i) = setindex!(x.data, y, i)
+setindex!(x::ScryptElement, y::SalsaBlock, i) = setindex!(x.data, (y |> asblock).data[1], i)
+setindex!(x::ScryptElement, y::AbstractVector{SalsaBlock{T}}, r) where {T} =
+    x.data[r] .= ((yi |> asblock).data[1] for yi in y)
 
-import Base.view
-view(x::ScryptElement, i) = view(x.data, i)
 
 import Base.length
 length(x::ScryptElement) = length(x.data)
+
+import Base.lastindex
+lastindex(x::ScryptElement) = length(x)
 
 """
     prepare(x::ScryptElement)
@@ -45,12 +49,12 @@ restored to their original positions by restore!().
 """
 function prepare(x::ScryptElement)
     y = ScryptElement(x.r)
-    y.data[2:end] = [x.data[i] |> prepare for i ∈ 1:length(x.data) - 1]
-    y.data[1] = x.data[end] |> prepare
+    y[2:end] = [x[i] |> prepare for i ∈ 1:length(x) - 1]
+    y[1] = x[end] |> prepare
     return y
 end
 
 function restore!(dest::ScryptElement, x::ScryptElement)
-    dest.data[1:end - 1] = [x.data[i] |> restore for i ∈ 2:length(x.data)]
-    dest.data[end] = x.data[1] |> restore
+    dest[1:end - 1] = [x[i] |> restore for i ∈ 2:length(x)]
+    dest[end] = x[1] |> restore
 end

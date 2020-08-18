@@ -28,8 +28,8 @@ bytes(x) = x ÷ 8
 hashbitslength(::ScryptParameters) = 256
 hashlength(x::ScryptParameters) = hashbitslength(x) |> bytes
 
-elementunitbitslength(::ScryptParameters) = 1024
+elementunitbitslength(::ScryptParameters) = 2 * 8 * sizeof(Salsa512)
 elementunitlength(x::ScryptParameters) = elementunitbitslength(x) |> bytes
 elementlength(x::ScryptParameters) = elementunitlength(x) * x.r
 bufferlength(x::ScryptParameters) = elementlength(x) * x.p
-elementblockcount(x::ScryptParameters) = elementlength(x) ÷ sizeof(SalsaBlock)
+elementblockcount(x::ScryptParameters) = elementlength(x) ÷ sizeof(Salsa512)

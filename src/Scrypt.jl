@@ -3,6 +3,7 @@ module Scrypt
 using Nettle
 using StaticArrays
 
+include("data/Salsa512.jl")
 include("data/SalsaBlock.jl")
 include("data/ScryptElement.jl")
 include("data/ScryptBlock.jl")
@@ -12,7 +13,7 @@ function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{U
     derivedkeylength > 0 || ArgumentError("Must be > 0.") |> throw
 
     buffer = pbkdf2_sha256_1(key, salt, bufferlength(parameters))
-    parallelbuffer = reshape(reinterpret(SalsaBlock, buffer), (elementblockcount(parameters), parameters.p))
+    parallelbuffer = reshape(reinterpret(Salsa512, buffer), (elementblockcount(parameters), parameters.p))
 
     for i ∈ 1:parameters.p
         element = @views ScryptElement(parameters.r, reshape(parallelbuffer[:, i], elementblockcount(parameters)))
@@ -53,20 +54,17 @@ function fillscryptblock!(workingbuffer, shufflebuffer, r, N)
     halfblocklength = r
 
     for i ∈ 1:N
-        previousblock = lastblock = view(workingbuffer, 1:1)
-        blockelement = getelement(scryptblock, i)
-        blockelement[1] = previousblock |> first
+        previousblock = lastblock = workingbuffer[1]
+        blockelement = scryptblock[i]
+        blockelement[1] = previousblock
         for j ∈ 2:length(workingbuffer)
-            currentblock = view(workingbuffer, j:j)
-            blockelement[j] = currentblock |> first
-            k = (j - 2) ÷ 2 + 2
-            iseven(j) || (k += halfblocklength)
+            blockelement[j] = currentblock = workingbuffer[j]
+            k = shuffleposition(j, r)
             mixblock!(currentblock, previousblock)
-            previousblock = currentblock
-            shufflebuffer[k] = currentblock |> first
+            shufflebuffer[k] = previousblock = currentblock
         end
         mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock |> first
+        shufflebuffer[1] = lastblock
 
         swap!(workingbuffer, shufflebuffer)
     end
@@ -74,14 +72,21 @@ function fillscryptblock!(workingbuffer, shufflebuffer, r, N)
     return scryptblock
 end
 
+function shuffleposition(j, r)
+    halfblocklength = r
+    k = (j - 2) ÷ 2 + 2
+    iseven(j) || (k += r)
+    return k
+end
+
 function mixblock!(currentblock, previousblock)
-    currentblock[1] = reinterpret(SalsaBlock, reinterpret(UInt128, currentblock) .⊻ reinterpret(UInt128, previousblock)) |> first
+    xor!(currentblock, previousblock)
     salsa20!(currentblock, 8)
     ()
 end
 
 function salsa20!(block, iterations)
-    splitblock = MMatrix{4,4}(reshape(reinterpret(UInt32, block), (4, 4)))
+    splitblock = copystatic(block)
     inputblock = copy(splitblock)
 
     for i ∈ 1:iterations
@@ -94,7 +99,7 @@ function salsa20!(block, iterations)
     end
 
     splitblock .+= inputblock
-    block[1] = reinterpret(SalsaBlock, reshape(splitblock, 16)) |> first
+    copyto!(block, splitblock)
     ()
 end
 
@@ -118,18 +123,16 @@ function mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, r, N)
     halfblocklength = r
     for i ∈ 1:N
         n = integerify(workingbuffer, N)
-        blockelement = getelement(scryptblock, n)
-        previousblock = lastblock = reinterpret(SalsaBlock, reinterpret(UInt128, view(workingbuffer, 1:1)) .⊻ reinterpret(UInt128, view(blockelement, 1:1)))
+        blockelement = scryptblock[n]
+        previousblock = lastblock = workingbuffer[1] ⊻ blockelement[1]
         for j ∈ 2:length(workingbuffer)
-            currentblock = reinterpret(SalsaBlock, reinterpret(UInt128, view(workingbuffer, j:j)) .⊻ reinterpret(UInt128, view(blockelement, j:j)))
-            k = (j - 2) ÷ 2 + 2
-            iseven(j) || (k += halfblocklength)
+            currentblock = workingbuffer[j] ⊻ blockelement[j]
+            k = shuffleposition(j, r)
             mixblock!(currentblock, previousblock)
-            previousblock = currentblock
-            shufflebuffer[k] = currentblock |> first
+            shufflebuffer[k] = previousblock = currentblock
         end
         mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock |> first
+        shufflebuffer[1] = lastblock
 
         swap!(workingbuffer, shufflebuffer)
     end
