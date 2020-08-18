@@ -8,6 +8,7 @@ UInt32 values.
 primitive type SalsaBlock 512 end
 
 SalsaBlock(x::AbstractVector) = reinterpret(SalsaBlock, x) |> first
+SalsaBlock(x::MMatrix{4,4}) = reinterpret(SalsaBlock, reshape(x, 16)) |> first
 
 ascolumns(x::SalsaBlock) = reinterpret(UInt128, [x])
 

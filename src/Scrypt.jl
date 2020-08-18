@@ -1,6 +1,7 @@
 module Scrypt
 
 using Nettle
+using StaticArrays
 
 include("data/SalsaBlock.jl")
 include("data/ScryptElement.jl")
@@ -80,7 +81,7 @@ function mixblock!(currentblock, previousblock)
 end
 
 function salsa20!(block, iterations)
-    splitblock = reshape(reinterpret(UInt32, block), (4, 4))
+    splitblock = MMatrix{4,4}(reshape(reinterpret(UInt32, block), (4, 4)))
     inputblock = copy(splitblock)
 
     for i ∈ 1:iterations
