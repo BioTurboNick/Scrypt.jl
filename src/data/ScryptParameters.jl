@@ -1,9 +1,9 @@
 maxuint = 2^32 - 1
 
 struct ScryptParameters
-    r::UInt  # element length multiplier
-    N::UInt  # processing cost
-    p::UInt  # parallelization
+    r::Int  # element length multiplier
+    N::Int  # processing cost
+    p::Int  # parallelization
 
     function ScryptParameters(r, N, p)
         r > 0 || ArgumentError("r Must be > 0.") |> throw
