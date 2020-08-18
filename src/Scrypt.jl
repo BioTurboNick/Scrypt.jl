@@ -97,11 +97,15 @@ function salsa20!(block, iterations)
     ()
 end
 
+const line3selector = [2, 3, 4, 1]
+const line1selector = [4, 1, 2, 3]
+const line4selector = [3, 4, 1, 2]
+
 function salsatranspose!(block)
-    toline3 = block[[2, 3, 4, 1], 1]
-    block[:, 1] = block[[4, 1, 2, 3], 3]
+    toline3 = block[line3selector, 1]
+    block[:, 1] = block[line1selector, 3]
     block[:, 3] = toline3
-    block[:, 4] = block[[3, 4, 1, 2], 4]
+    block[:, 4] = block[line4selector, 4]
     ()
 end
 
