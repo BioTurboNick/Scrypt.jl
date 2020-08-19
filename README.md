@@ -18,4 +18,4 @@ Optimization path:
  - Moved constant array selectors into global constants: 7.206 s (81019300 allocations: 7.32 GiB) (commit )
  - Just prior to the critical inner loop, copied the data to an MMatrix from StaticArrays: 1.455 s (81019300 allocations: 3.29 GiB) (commit )
  - Refactored and simplified: 1.642 s (81281446 allocations: 3.27 GiB) (commit )
- - 
+ - Changed salsamix!() function to loop over rows instead of over columns, paradoxically: 1.130 s (17234346 allocations: 1.48 GiB) (commit )

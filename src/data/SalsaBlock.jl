@@ -37,7 +37,6 @@ function xor!(x::SalsaBlock, y::SalsaBlock)
     xcols.data .= xcols.data .⊻ ascolumns(y).data
 end
 
-
 const SALSA_BLOCK_REORDER_INDEXES = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;  4;  9; 14;  3;  8]
 const SALSA_BLOCK_RESTORE_INDEXES = [ 5;  2; 15; 12;  9;  6;  3; 16; 13; 10;  7;  4;  1; 14; 11;  8]
 
@@ -49,15 +48,8 @@ The inner Salsa20/8 operations operate on diagonals. To simplify these
 operations, we re-arrange each block so that the diagonals are placed in
 columns. The data are restored to their original positions by restore().
 """
-prepare(x::SalsaBlock) = asintegers(x)[SALSA_BLOCK_REORDER_INDEXES] |> SalsaBlock
-restore(x::SalsaBlock) = asintegers(x)[SALSA_BLOCK_RESTORE_INDEXES] |> SalsaBlock
-
-
-
-#SalsaBlock(x::MMatrix{4,4}) = reinterpret(SalsaBlock, reshape(x, 16)) |> first
-
-
-
+prepare!(x::SalsaBlock) = x.data[:] = reinterpret(Salsa512, asintegers(x)[SALSA_BLOCK_REORDER_INDEXES])
+restore!(x::SalsaBlock) = x.data[:] = reinterpret(Salsa512, asintegers(x)[SALSA_BLOCK_RESTORE_INDEXES])
 
 copystatic(x::SalsaBlock) = asintegers(x).data |> MMatrix{4,4}
 

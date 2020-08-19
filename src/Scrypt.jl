@@ -72,12 +72,30 @@ function fillscryptblock!(workingbuffer, shufflebuffer, r, N)
     return scryptblock
 end
 
-function shuffleposition(j, r)
+function mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, r, N)
     halfblocklength = r
-    k = (j - 2) ÷ 2 + 2
-    iseven(j) || (k += r)
-    return k
+    for i ∈ 1:N
+        n = integerify(workingbuffer, N)
+        blockelement = scryptblock[n]
+        xor!(workingbuffer[1], blockelement[1])
+        previousblock = lastblock = workingbuffer[1]
+        for j ∈ 2:length(workingbuffer)
+            xor!(workingbuffer[j], blockelement[j])
+            currentblock = workingbuffer[j]
+            k = shuffleposition(j, r)
+            mixblock!(currentblock, previousblock)
+            shufflebuffer[k] = previousblock = currentblock
+        end
+        mixblock!(lastblock, previousblock)
+        shufflebuffer[1] = lastblock
+
+        swap!(workingbuffer, shufflebuffer)
+    end
 end
+
+integerify(x::ScryptElement, N) = asintegers(x[1])[5] % N + 1
+
+shuffleposition(j, halfblockcount) = (j - 2) ÷ 2 + 2 + (iseven(j) ? 0 : halfblockcount)
 
 function mixblock!(currentblock, previousblock)
     xor!(currentblock, previousblock)
@@ -90,17 +108,22 @@ function salsa20!(block, iterations)
     inputblock = copy(splitblock)
 
     for i ∈ 1:iterations
-        splitblock[:, 3] = salsa(splitblock[:, 1], splitblock[:, 2], splitblock[:, 3], 7)
-        splitblock[:, 4] = salsa(splitblock[:, 2], splitblock[:, 3], splitblock[:, 4], 9)
-        splitblock[:, 1] = salsa(splitblock[:, 3], splitblock[:, 4], splitblock[:, 1], 13)
-        splitblock[:, 2] = salsa(splitblock[:, 4], splitblock[:, 1], splitblock[:, 2], 18)
-
+        salsamix!(splitblock)
         salsatranspose!(splitblock)
     end
 
     splitblock .+= inputblock
     copyto!(block, splitblock)
     ()
+end
+
+function salsamix!(block)
+    for i ∈ 1:4
+        block[i, 3] = salsa(block[i, 1], block[i, 2], block[i, 3], 7)
+        block[i, 4] = salsa(block[i, 2], block[i, 3], block[i, 4], 9)
+        block[i, 1] = salsa(block[i, 3], block[i, 4], block[i, 1], 13)
+        block[i, 2] = salsa(block[i, 4], block[i, 1], block[i, 2], 18)
+    end
 end
 
 const line3selector = [2, 3, 4, 1]
@@ -119,26 +142,9 @@ function salsa(addend1::AbstractVector{UInt32}, addend2::AbstractVector{UInt32},
     return xor_operand .⊻ bitrotate.(addend1 .+ addend2, rotationmagnitude)
 end
 
-function mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, r, N)
-    halfblocklength = r
-    for i ∈ 1:N
-        n = integerify(workingbuffer, N)
-        blockelement = scryptblock[n]
-        previousblock = lastblock = workingbuffer[1] ⊻ blockelement[1]
-        for j ∈ 2:length(workingbuffer)
-            currentblock = workingbuffer[j] ⊻ blockelement[j]
-            k = shuffleposition(j, r)
-            mixblock!(currentblock, previousblock)
-            shufflebuffer[k] = previousblock = currentblock
-        end
-        mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock
+salsa(addend1::UInt32, addend2::UInt32, xor_operand::UInt32, rotationmagnitude) =
+    xor_operand ⊻ bitrotate(addend1 + addend2, rotationmagnitude)
 
-        swap!(workingbuffer, shufflebuffer)
-    end
-end
-
-integerify(x::ScryptElement, N) = asintegers(x[1])[5] % N + 1
 
 export scrypt
 export ScryptParameters
