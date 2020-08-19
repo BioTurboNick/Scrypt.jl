@@ -13,7 +13,6 @@ struct SalsaBlock{T <: AbstractVector}
         length(x) * sizeof(eltype(x)) == sizeof(Salsa512) || ArgumentError("Must be 64 bytes.") |> throw
         new{typeof(x)}(x)
     end
-    SalsaBlock(x::AbstractMatrix) = x |> vec |> SalsaBlock
 end
 
 ascolumns(x::SalsaBlock) = reinterpret(UInt128, x.data) |> SalsaBlock
@@ -22,15 +21,6 @@ asblock(x::SalsaBlock) = reinterpret(Salsa512, x.data) |> SalsaBlock
 
 import Base.getindex
 getindex(x::SalsaBlock, i) = x.data[i]
-
-import Base.setindex!
-setindex!(x::SalsaBlock, y::UInt128, i) = setindex!((x |> ascolumns).data, y, i)
-setindex!(x::SalsaBlock, y::UInt32, i) = setindex!((x |> asintegers).data, y, i)
-setindex!(x::SalsaBlock, y::Salsa512, i) = setindex!((x |> asblock).data, y, i)
-
-
-import Base.copyto!
-copyto!(dest::SalsaBlock, src::AbstractVecOrMat) = reinterpret(eltype(src), dest.data) .= src |> vec
 
 function xor!(x::SalsaBlock, y::SalsaBlock)
     xcols = x |> ascolumns
@@ -50,6 +40,3 @@ columns. The data are restored to their original positions by restore().
 """
 prepare!(x::SalsaBlock) = x.data[:] = reinterpret(Salsa512, asintegers(x)[SALSA_BLOCK_REORDER_INDEXES])
 restore!(x::SalsaBlock) = x.data[:] = reinterpret(Salsa512, asintegers(x)[SALSA_BLOCK_RESTORE_INDEXES])
-
-copystatic(x::SalsaBlock) = asintegers(x).data |> MMatrix{4,4}
-
