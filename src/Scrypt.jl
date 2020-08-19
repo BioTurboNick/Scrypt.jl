@@ -1,7 +1,6 @@
 module Scrypt
 
 using Nettle
-using StaticArrays
 using SIMD
 
 include("data/Salsa512.jl")
@@ -104,9 +103,11 @@ function mixblock!(currentblock, previousblock)
     ()
 end
 
+const SALSA_VECTOR_INDEXES = (1,5,9,13)
+
 function salsa20!(block, iterations)
     blockdata = @views asintegers(block).data[:]
-    splitblock = [vload(Vec{4, UInt32}, blockdata, i) for i ∈ (1,5,9,13)]
+    splitblock = [vload(Vec{4, UInt32}, blockdata, i) for i ∈ SALSA_VECTOR_INDEXES]
     inputblock = copy(splitblock)
 
     for i ∈ 1:iterations
@@ -116,10 +117,9 @@ function salsa20!(block, iterations)
 
     splitblock += inputblock
 
-    vstore(splitblock[1], blockdata, 1)
-    vstore(splitblock[2], blockdata, 5)
-    vstore(splitblock[3], blockdata, 9)
-    vstore(splitblock[4], blockdata, 13)
+    for i ∈ 1:4
+        vstore(splitblock[i], blockdata, SALSA_VECTOR_INDEXES[i])
+    end
     ()
 end
 
@@ -131,7 +131,7 @@ function salsamix!(block)
     ()
 end
 
-function salsa(addend1::Vec{4, UInt32}, addend2::Vec{4, UInt32}, xor_operand::Vec{4, UInt32}, rotationmagnitude)
+function salsa(addend1, addend2, xor_operand, rotationmagnitude)
     sum = addend1 + addend2
     rot = (sum << rotationmagnitude) | (sum >>> (sizeof(UInt32) * 8 - rotationmagnitude))
     return xor_operand ⊻ rot
@@ -144,7 +144,6 @@ function salsatranspose!(block)
     block[4] = shufflevector(block[4], Val((2, 3, 0, 1)))
     ()
 end
-
 
 export scrypt
 export ScryptParameters
