@@ -21,4 +21,4 @@ Optimization notes:
  - Changed salsamix!() function to loop over rows instead of over columns, paradoxically: 1.130 s (17234346 allocations: 1.48 GiB) (commit 94e620944ca398af78eac778ea55580d81972343)
  - Fully implemented SIMD for Salsa20/8 instead of StaticArrays: 312.388 ms (4651434 allocations: 471.02 MiB) (commit c08f960f82f043e0443b73307542ba30ecd97d0b)
 
- End result: 2-3 times faster than my original C++/C# pacakge!
+ End result: Only 10 times slower than my original C++/C# package, after starting ~525 times slower. A bit more optimization to try to squeeze out.
