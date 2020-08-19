@@ -2,6 +2,7 @@ module Scrypt
 
 using Nettle
 using StaticArrays
+using SIMD
 
 include("data/Salsa512.jl")
 include("data/SalsaBlock.jl")
@@ -104,7 +105,8 @@ function mixblock!(currentblock, previousblock)
 end
 
 function salsa20!(block, iterations)
-    splitblock = copystatic(block)
+    blockdata = @views asintegers(block).data[:]
+    splitblock = [vload(Vec{4, UInt32}, blockdata, i) for i ∈ (1,5,9,13)]
     inputblock = copy(splitblock)
 
     for i ∈ 1:iterations
@@ -112,38 +114,36 @@ function salsa20!(block, iterations)
         salsatranspose!(splitblock)
     end
 
-    splitblock .+= inputblock
-    copyto!(block, splitblock)
+    splitblock += inputblock
+
+    vstore(splitblock[1], blockdata, 1)
+    vstore(splitblock[2], blockdata, 5)
+    vstore(splitblock[3], blockdata, 9)
+    vstore(splitblock[4], blockdata, 13)
     ()
 end
 
 function salsamix!(block)
-    for i ∈ 1:4
-        block[i, 3] = salsa(block[i, 1], block[i, 2], block[i, 3], 7)
-        block[i, 4] = salsa(block[i, 2], block[i, 3], block[i, 4], 9)
-        block[i, 1] = salsa(block[i, 3], block[i, 4], block[i, 1], 13)
-        block[i, 2] = salsa(block[i, 4], block[i, 1], block[i, 2], 18)
-    end
-end
-
-const line3selector = [2, 3, 4, 1]
-const line1selector = [4, 1, 2, 3]
-const line4selector = [3, 4, 1, 2]
-
-function salsatranspose!(block)
-    toline3 = block[line3selector, 1]
-    block[:, 1] = block[line1selector, 3]
-    block[:, 3] = toline3
-    block[:, 4] = block[line4selector, 4]
+    block[3] = salsa(block[1], block[2], block[3], 7)
+    block[4] = salsa(block[2], block[3], block[4], 9)
+    block[1] = salsa(block[3], block[4], block[1], 13)
+    block[2] = salsa(block[4], block[1], block[2], 18)
     ()
 end
 
-function salsa(addend1::AbstractVector{UInt32}, addend2::AbstractVector{UInt32}, xor_operand::AbstractVector{UInt32}, rotationmagnitude)
-    return xor_operand .⊻ bitrotate.(addend1 .+ addend2, rotationmagnitude)
+function salsa(addend1::Vec{4, UInt32}, addend2::Vec{4, UInt32}, xor_operand::Vec{4, UInt32}, rotationmagnitude)
+    sum = addend1 + addend2
+    rot = (sum << rotationmagnitude) | (sum >>> (sizeof(UInt32) * 8 - rotationmagnitude))
+    return xor_operand ⊻ rot
 end
 
-salsa(addend1::UInt32, addend2::UInt32, xor_operand::UInt32, rotationmagnitude) =
-    xor_operand ⊻ bitrotate(addend1 + addend2, rotationmagnitude)
+function salsatranspose!(block)
+    toline3 = shufflevector(block[1], Val((1, 2, 3, 0)))
+    block[1] = shufflevector(block[3], Val((3, 0, 1, 2)))
+    block[3] = toline3
+    block[4] = shufflevector(block[4], Val((2, 3, 0, 1)))
+    ()
+end
 
 
 export scrypt
