@@ -16,9 +16,3 @@ end
 
 import Base.getindex
 getindex(x::ScryptBlock, i) = @views ScryptElement(x.r, x.data[:, i])
-
-import Base.show
-show(io::IO, x::ScryptBlock) = show(io, x.data)
-
-import Base.size
-size(x::ScryptBlock) = size(x.data)
