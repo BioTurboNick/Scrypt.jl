@@ -1,5 +1,8 @@
 primitive type Salsa512 512 end
 
+
+
+
 Salsa512(x::Vector{UInt128}) = reinterpret(Salsa512, x) |> first
 
 import Base.zero

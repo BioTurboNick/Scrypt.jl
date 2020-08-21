@@ -4,9 +4,6 @@ using Nettle
 using SIMD
 
 include("data/Salsa512.jl")
-include("data/SalsaBlock.jl")
-include("data/ScryptElement.jl")
-include("data/ScryptBlock.jl")
 include("data/ScryptParameters.jl")
 
 function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{UInt8}, derivedkeylength)
@@ -16,111 +13,144 @@ function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{U
     parallelbuffer = reshape(reinterpret(Salsa512, buffer), (elementblockcount(parameters), parameters.p))
 
     for i ∈ 1:parameters.p
-        element = @views ScryptElement(parameters.r, reshape(parallelbuffer[:, i], elementblockcount(parameters)))
+        element = @views reshape(parallelbuffer[:, i], elementblockcount(parameters))
         smix!(element, parameters)
     end
 
     derivedkey = pbkdf2_sha256_1(key, buffer, derivedkeylength)
 end
 
-function pbkdf2_sha256_1(key, salt::Vector{UInt8}, derivedkeylength)
-    function saltdigest(i, salttail)
-        salttail[:] = reinterpret(UInt8, [UInt32(i)]) |> reverse
-        digest("sha256", key, salt)
-    end
+const HASH_LENGTH = 256 ÷ 8
 
-    hashlength = 256 ÷ 8
-    blocks = ceil(derivedkeylength ÷ hashlength) |> Int
-    lastblockbytes = derivedkeylength - (blocks - 1) * hashlength
+function pbkdf2_sha256_1(key, salt::Vector{UInt8}, derivedkeylength)
+    blockcount = cld(derivedkeylength, HASH_LENGTH)
+    lastblockbytes = derivedkeylength - (blockcount - 1) * HASH_LENGTH
     
     salt = [salt; zeros(UInt8, 4)]
     salttail = view(salt, length(salt) - 3:length(salt))
     
-    derivedkey = vcat((saltdigest(i, salttail) for i ∈ 1:blocks)...)
+    derivedkey = Matrix{UInt8}(undef, HASH_LENGTH, blockcount)
 
-    return lastblockbytes < hashlength ? derivedkey[1:end-hashlength+lastblockbytes] : derivedkey
+    for i ∈ 1:blockcount
+        salttail[:] = reinterpret(UInt8, [UInt32(i)]) |> reverse
+        derivedkey[:, i] = digest("sha256", key, salt)
+    end
+
+    derivedkey = reshape(derivedkey, blockcount * HASH_LENGTH)[1:derivedkeylength]
+    return derivedkey
 end
 
-function smix!(element::ScryptElement, parameters::ScryptParameters)
+function smix!(element::AbstractVector{Salsa512}, parameters::ScryptParameters)
     workingbuffer = prepare(element)
-    shufflebuffer = ScryptElement(parameters.r)
-    scryptblock = fillscryptblock!(workingbuffer, shufflebuffer, parameters.r, parameters.N)
-    mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, parameters.r, parameters.N)
+    shufflebuffer = Vector{Salsa512}(undef, length(workingbuffer))
+    scryptblock, workingbuffer, shufflebuffer = fillscryptblock!(workingbuffer, shufflebuffer, parameters.r, parameters.N)
+    workingbuffer = mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, parameters.r, parameters.N)
     restore!(element, workingbuffer)
 end
 
-function fillscryptblock!(workingbuffer, shufflebuffer, r, N)
-    scryptblock = ScryptBlock(r, N)
-    halfblocklength = r
+const SALSA_BLOCK_REORDER_INDEXES = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;  4;  9; 14;  3;  8]
 
-    for i ∈ 1:N
-        previousblock = lastblock = workingbuffer[1]
-        blockelement = scryptblock[i]
-        blockelement[1] = previousblock
-        for j ∈ 2:length(workingbuffer)
-            blockelement[j] = currentblock = workingbuffer[j]
-            k = shuffleposition(j, r)
-            mixblock!(currentblock, previousblock)
-            shufflebuffer[k] = previousblock = currentblock
-        end
-        mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock
+function prepare(src::AbstractVector{Salsa512})
+    dest = Vector{Salsa512}(undef, length(src))
+    si = 1:length(src)
+    dj = [2:length(dest); 1]
 
-        swap!(workingbuffer, shufflebuffer)
+    for (i, j) ∈ zip(si, dj)
+        dest[j] = src[i]
+        permute!(uint32view(dest, j), SALSA_BLOCK_REORDER_INDEXES)
     end
-    
-    return scryptblock
-end
 
-function mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, r, N)
-    halfblocklength = r
-    for i ∈ 1:N
-        n = integerify(workingbuffer, N)
-        blockelement = scryptblock[n]
-        xor!(workingbuffer[1], blockelement[1])
-        previousblock = lastblock = workingbuffer[1]
-        for j ∈ 2:length(workingbuffer)
-            xor!(workingbuffer[j], blockelement[j])
-            currentblock = workingbuffer[j]
-            k = shuffleposition(j, r)
-            mixblock!(currentblock, previousblock)
-            shufflebuffer[k] = previousblock = currentblock
-        end
-        mixblock!(lastblock, previousblock)
-        shufflebuffer[1] = lastblock
+    return dest
+end #permute! is faster than explicit vectorization, even with a few bigger allocations
 
-        swap!(workingbuffer, shufflebuffer)
+function restore!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
+    si = 1:length(src)
+    dj = [length(dest); 1:length(dest) - 1]
+
+    for (i, j) ∈ zip(si, dj)
+        dest[j] = src[i]
+        invpermute!(uint32view(dest, j), SALSA_BLOCK_REORDER_INDEXES)
     end
 end
 
-integerify(x::ScryptElement, N) = asintegers(x[1])[5] % N + 1
+function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer::AbstractVector{Salsa512}, r, N)
+    scryptblock = Matrix{Salsa512}(undef, 2r, N)
+    for i ∈ 1:N
+        scryptelement = reshape(view(scryptblock, :, i), 2r)
+        previousblock = lastblock = block = load_store!(workingbuffer, scryptelement, 1)
+        for j ∈ 2:2r
+            block = load_store!(workingbuffer, scryptelement, j)
+            block = mixblock_shuffle_store!(block, previousblock, shufflebuffer, shuffleposition(j, r))
+            previousblock = block
+        end
+        mixblock_shuffle_store!(lastblock, previousblock, shufflebuffer, 1)
+        workingbuffer, shufflebuffer = shufflebuffer, workingbuffer
+    end
+    return scryptblock, workingbuffer, shufflebuffer
+end
 
 shuffleposition(j, halfblockcount) = (j - 2) ÷ 2 + 2 + (iseven(j) ? 0 : halfblockcount)
 
-function mixblock!(currentblock, previousblock)
-    xor!(currentblock, previousblock)
-    salsa20!(currentblock, 8)
-    ()
+uint32view(x, i) = reinterpret(UInt32, view(x, i:i))
+vloadsalsa(x, i) = vload(Vec{16, UInt32}, uint32view(x, i)[:], 1)
+vstoresalsa(v, x, i) = vstore(v, uint32view(x, i), 1)
+
+function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
+    block = vloadsalsa(workingbuffer, i)
+    vstoresalsa(block, scryptelement, i)
+    return block
 end
 
-const SALSA_VECTOR_INDEXES = (1,5,9,13)
+function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptblock, shufflebuffer::AbstractVector{Salsa512}, r, N)
+    for i ∈ 1:N
+        n = integerify(workingbuffer, N)
+        scryptelement = reshape(view(scryptblock, :, n), 2r)
+        previousblock = lastblock = block = load_xor(workingbuffer, scryptelement, 1)
+        for j ∈ 2:2r
+            block = load_xor(workingbuffer, scryptelement, j)
+            block = mixblock_shuffle_store!(block, previousblock, shufflebuffer, shuffleposition(j, r))
+            previousblock = block
+        end
+        mixblock_shuffle_store!(lastblock, previousblock, shufflebuffer, 1)
+        workingbuffer, shufflebuffer = shufflebuffer, workingbuffer
+    end
+    return workingbuffer
+end
 
-function salsa20!(block, iterations)
-    blockdata = @views asintegers(block).data[:]
-    splitblock = [vload(Vec{4, UInt32}, blockdata, i) for i ∈ SALSA_VECTOR_INDEXES]
-    inputblock = copy(splitblock)
+integerify(x::AbstractVector{Salsa512}, N) = uint32view(x, 1)[5] % N + 1
+
+function load_xor(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
+    block = vloadsalsa(workingbuffer, i)
+    block ⊻= vloadsalsa(scryptelement, i)
+    return block
+end
+
+function mixblock_shuffle_store!(block, previousblock, shufflebuffer, i)
+    block ⊻= previousblock
+    block = salsa20(block, 8)
+    vstoresalsa(block, shufflebuffer, i)
+    return block
+end
+
+function salsa20(block, iterations)
+    inputblock = block
+
+    splitblock = [shufflevector(block, Val((0,1,2,3))),
+                    shufflevector(block, Val((4,5,6,7))),
+                    shufflevector(block, Val((8,9,10,11))),
+                    shufflevector(block, Val((12,13,14,15)))]
 
     for i ∈ 1:iterations
         salsamix!(splitblock)
         salsatranspose!(splitblock)
     end
 
-    splitblock += inputblock
+    block = shufflevector(shufflevector(splitblock[1], splitblock[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                          shufflevector(splitblock[3], splitblock[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                          Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
 
-    for i ∈ 1:4
-        vstore(splitblock[i], blockdata, SALSA_VECTOR_INDEXES[i])
-    end
-    ()
+    block += inputblock
+    return block
 end
 
 function salsamix!(block)

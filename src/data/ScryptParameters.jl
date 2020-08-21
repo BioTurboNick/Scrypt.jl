@@ -1,4 +1,4 @@
-maxuint = 2^32 - 1
+const MAX_UINT = 2^32 - 1
 
 struct ScryptParameters
     r::Int  # element length multiplier
@@ -12,7 +12,7 @@ struct ScryptParameters
 
         parameters = new(UInt(r), UInt(N), UInt(p))
 
-        p ≤ maxuint * hashlength(parameters) / elementlength(parameters) || 
+        p ≤ MAX_UINT * hashlength(parameters) / elementlength(parameters) || 
             ArgumentError("p and r must satisfy the relationship p ≤ (2^32 - 1) * hashlength / elementlength)") |> throw
 
         r * N * elementunitlength(parameters) ≤ Sys.total_memory() ||
@@ -33,3 +33,4 @@ elementunitlength(x::ScryptParameters) = elementunitbitslength(x) |> bytes
 elementlength(x::ScryptParameters) = elementunitlength(x) * x.r
 bufferlength(x::ScryptParameters) = elementlength(x) * x.p
 elementblockcount(x::ScryptParameters) = elementlength(x) ÷ sizeof(Salsa512)
+
