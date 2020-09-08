@@ -61,7 +61,7 @@ function prepare(src::AbstractVector{Salsa512})
     end
 
     return dest
-end #permute! is faster than explicit vectorization, even with a few bigger allocations
+end #permute! is no faster than explicit vectorization, even with a few extra allocations
 
 function restore!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
     si = 1:length(src)
@@ -142,7 +142,7 @@ integerify(x::AbstractVector{Salsa512}, N) = uint32view(x, 1)[5] % N + 1
 
 function load_xor(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
     block = vloadsalsa(workingbuffer, i)
-    block ⊻= vloadsalsa(scryptelement, i)
+    block ⊻= vloadsalsant(scryptelement, i)
     return block
 end
 

@@ -22,7 +22,8 @@ Optimization notes:
  - Fully implemented SIMD for Salsa20/8 instead of StaticArrays: 312.388 ms (4651434 allocations: 471.02 MiB) (commit c08f960f82f043e0443b73307542ba30ecd97d0b)
  - Cut down a few allocations by using `@code_warntype` to tighten up function types, but minimal improvment overall.
  - Further vectorized, removed some abstraction. Weirdly, vectorization of the prepare/restore functions made it marginally slower, although no difference in allocations: 261.690 ms (1311110 allocations: 196.05 MiB)
- - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 143.491 ms (524678 allocations: 88.07 MiB)
+ - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 150.639 ms (524678 allocations: 88.07 MiB)
+ 
 
 
  End result: Only ~5 times slower than my original C++/C# package, after starting ~525 times slower. A bit more optimization to try to squeeze out.
