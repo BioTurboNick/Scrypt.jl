@@ -42,7 +42,7 @@ end
 
 function smix!(element::AbstractVector{Salsa512}, parameters::ScryptParameters)
     workingbuffer = prepare(element)
-    shufflebuffer = Vector{Salsa512}(undef, length(workingbuffer))
+    shufflebuffer = valloc(Salsa512, length(workingbuffer))
     scryptblock, workingbuffer, shufflebuffer = fillscryptblock!(workingbuffer, shufflebuffer, parameters.r, parameters.N)
     workingbuffer = mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, parameters.r, parameters.N)
     restore!(element, workingbuffer)
@@ -51,7 +51,7 @@ end
 const SALSA_BLOCK_REORDER_INDEXES = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;  4;  9; 14;  3;  8]
 
 function prepare(src::AbstractVector{Salsa512})
-    dest = Vector{Salsa512}(undef, length(src))
+    dest = valloc(Salsa512, length(src))
     si = 1:length(src)
     dj = [2:length(dest); 1]
 
@@ -74,9 +74,9 @@ function restore!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
 end
 
 function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer::AbstractVector{Salsa512}, r, N)
-    scryptblock = Matrix{Salsa512}(undef, 2r, N)
+    scryptblock = reshape(valloc(Salsa512, 2r * N), (2r, N))
     for i ∈ 1:N
-        scryptelement = reshape(view(scryptblock, :, i), 2r)
+        scryptelement = view(scryptblock, :, i)
         previousblock = lastblock = block = load_store!(workingbuffer, scryptelement, 1)
         for j ∈ 2:2r
             block = load_store!(workingbuffer, scryptelement, j)
@@ -91,9 +91,30 @@ end
 
 shuffleposition(j, halfblockcount) = (j - 2) ÷ 2 + 2 + (iseven(j) ? 0 : halfblockcount)
 
+import Base.stride
+import Base.strides
+
+function stride(a::Base.ReinterpretArray, i::Int)
+    a.parent isa StridedArray || ArgumentError("Parent must be strided.") |> throw
+    if i > ndims(a)
+        return length(a)
+    end
+    s = 1
+    for n = 1:(i-1)
+        s *= size(a, n)
+    end
+    return s
+end
+
+function strides(a::Base.ReinterpretArray)
+    a.parent isa StridedArray || ArgumentError("Parent must be strided.") |> throw
+    Base.size_to_strides(1, size(a)...)
+end
+
 uint32view(x, i) = reinterpret(UInt32, view(x, i:i))
-vloadsalsa(x, i) = vload(Vec{16, UInt32}, uint32view(x, i)[:], 1)
-vstoresalsa(v, x, i) = vstore(v, uint32view(x, i), 1)
+vloadsalsa(x, i) = vloada(Vec{16, UInt32}, uint32view(x, i), 1)
+vloadsalsant(x, i) = vloadnt(Vec{16, UInt32}, uint32view(x, i), 1)
+vstoresalsa(v, x, i) = vstorea(v, uint32view(x, i), 1)
 
 function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
     block = vloadsalsa(workingbuffer, i)
