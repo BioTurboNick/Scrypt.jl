@@ -23,7 +23,9 @@ Optimization notes:
  - Cut down a few allocations by using `@code_warntype` to tighten up function types, but minimal improvment overall.
  - Further vectorized, removed some abstraction. Weirdly, vectorization of the prepare/restore functions made it marginally slower, although no difference in allocations: 261.690 ms (1311110 allocations: 196.05 MiB)
  - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 150.639 ms (524678 allocations: 88.07 MiB)
- 
+ - Got rid of an internal array I had introduced in the inner loop accidentally: 85.645 ms (390 allocations: 16.07 MiB)
+
+ 16 MiB is about the lower limit of allocation amount for the parameters I was using.
 
 
  End result: Only ~5 times slower than my original C++/C# package, after starting ~525 times slower. A bit more optimization to try to squeeze out.

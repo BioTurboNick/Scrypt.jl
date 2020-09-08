@@ -77,7 +77,7 @@ function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer
     scryptblock = reshape(valloc(Salsa512, 2r * N), (2r, N))
     for i ∈ 1:N
         scryptelement = view(scryptblock, :, i)
-        previousblock = lastblock = block = load_store!(workingbuffer, scryptelement, 1)
+        previousblock = lastblock = load_store!(workingbuffer, scryptelement, 1)
         for j ∈ 2:2r
             block = load_store!(workingbuffer, scryptelement, j)
             block = mixblock_shuffle_store!(block, previousblock, shufflebuffer, shuffleposition(j, r))
@@ -126,7 +126,7 @@ function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptbloc
     for i ∈ 1:N
         n = integerify(workingbuffer, N)
         scryptelement = reshape(view(scryptblock, :, n), 2r)
-        previousblock = lastblock = block = load_xor(workingbuffer, scryptelement, 1)
+        previousblock = lastblock = load_xor(workingbuffer, scryptelement, 1)
         for j ∈ 2:2r
             block = load_xor(workingbuffer, scryptelement, j)
             block = mixblock_shuffle_store!(block, previousblock, shufflebuffer, shuffleposition(j, r))
@@ -153,33 +153,36 @@ function mixblock_shuffle_store!(block, previousblock, shufflebuffer, i)
     return block
 end
 
+splitblock(block) = (shufflevector(block, Val((0,1,2,3))),
+                     shufflevector(block, Val((4,5,6,7))),
+                     shufflevector(block, Val((8,9,10,11))),
+                     shufflevector(block, Val((12,13,14,15))))
+
+joinlines(lines) = shufflevector(shufflevector(lines[1], lines[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                                 shufflevector(lines[3], lines[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                                 Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
+
 function salsa20(block, iterations)
     inputblock = block
 
-    splitblock = [shufflevector(block, Val((0,1,2,3))),
-                    shufflevector(block, Val((4,5,6,7))),
-                    shufflevector(block, Val((8,9,10,11))),
-                    shufflevector(block, Val((12,13,14,15)))]
-
+    lines = splitblock(block)
     for i ∈ 1:iterations
-        salsamix!(splitblock)
-        salsatranspose!(splitblock)
+        lines = salsamix(lines)
+        lines = salsatranspose(lines)
     end
-
-    block = shufflevector(shufflevector(splitblock[1], splitblock[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
-                          shufflevector(splitblock[3], splitblock[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
-                          Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
+    block = joinlines(lines)
 
     block += inputblock
     return block
 end
 
-function salsamix!(block)
-    block[3] = salsa(block[1], block[2], block[3], 7)
-    block[4] = salsa(block[2], block[3], block[4], 9)
-    block[1] = salsa(block[3], block[4], block[1], 13)
-    block[2] = salsa(block[4], block[1], block[2], 18)
-    ()
+function salsamix(lines)
+    line1, line2, line3, line4 = lines
+    line3 = salsa(line1, line2, line3, 7)
+    line4 = salsa(line2, line3, line4, 9)
+    line1 = salsa(line3, line4, line1, 13)
+    line2 = salsa(line4, line1, line2, 18)
+    return (line1, line2, line3, line4)
 end
 
 function salsa(addend1, addend2, xor_operand, rotationmagnitude)
@@ -188,12 +191,12 @@ function salsa(addend1, addend2, xor_operand, rotationmagnitude)
     return xor_operand ⊻ rot
 end
 
-function salsatranspose!(block)
-    toline3 = shufflevector(block[1], Val((1, 2, 3, 0)))
-    block[1] = shufflevector(block[3], Val((3, 0, 1, 2)))
-    block[3] = toline3
-    block[4] = shufflevector(block[4], Val((2, 3, 0, 1)))
-    ()
+function salsatranspose(lines)
+    toline3 = shufflevector(lines[1], Val((1, 2, 3, 0)))
+    line1 = shufflevector(lines[3], Val((3, 0, 1, 2)))
+    line3 = toline3
+    line4 = shufflevector(lines[4], Val((2, 3, 0, 1)))
+    return (line1, lines[2], line3, line4)
 end
 
 export scrypt
