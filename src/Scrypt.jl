@@ -92,11 +92,11 @@ end
 
 shuffleposition(j, halfblockcount) = (j - 2) ÷ 2 + 2 + (iseven(j) ? 0 : halfblockcount)
 
-uint32view(x, i) = reinterpret(UInt32, view(x, i:i))
-vloadsalsa(x, i) = vloada(Vec{16, UInt32}, uint32view(x, i), 1)
-vloadsalsant(x, i) = vloadnt(Vec{16, UInt32}, uint32view(x, i), 1)
-vstoresalsa(v, x, i) = vstorea(v, uint32view(x, i), 1)
-vstoresalsant(v, x, i) = vstorent(v, uint32view(x, i), 1)
+uint32view(x, i) = @inbounds reinterpret(UInt32, view(x, i:i))
+vloadsalsa(x, i) = @inbounds vloada(Vec{16, UInt32}, uint32view(x, i), 1)
+vloadsalsant(x, i) = @inbounds vloadnt(Vec{16, UInt32}, uint32view(x, i), 1)
+vstoresalsa(v, x, i) = @inbounds vstorea(v, uint32view(x, i), 1)
+vstoresalsant(v, x, i) = @inbounds vstorent(v, uint32view(x, i), 1)
 
 function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
     block = vloadsalsa(workingbuffer, i)
