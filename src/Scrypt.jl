@@ -163,9 +163,9 @@ splitblock(block) = (shufflevector(block, Val((0,1,2,3))),
                      shufflevector(block, Val((8,9,10,11))),
                      shufflevector(block, Val((12,13,14,15))))
 
-joinlines(lines) = shufflevector(shufflevector(lines[1], lines[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
-                                 shufflevector(lines[3], lines[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
-                                 Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
+joinlines(lines) = @inbounds shufflevector(shufflevector(lines[1], lines[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                                           shufflevector(lines[3], lines[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                                           Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
 
 function salsamix(lines)
     line1, line2, line3, line4 = lines
@@ -183,11 +183,11 @@ function salsa(addend1, addend2, xor_operand, rotationmagnitude)
 end
 
 function salsatranspose(lines)
-    toline3 = shufflevector(lines[1], Val((1, 2, 3, 0)))
-    line1 = shufflevector(lines[3], Val((3, 0, 1, 2)))
+    toline3 = @inbounds shufflevector(lines[1], Val((1, 2, 3, 0)))
+    line1 = @inbounds shufflevector(lines[3], Val((3, 0, 1, 2)))
     line3 = toline3
-    line4 = shufflevector(lines[4], Val((2, 3, 0, 1)))
-    return (line1, lines[2], line3, line4)
+    line4 = @inbounds shufflevector(lines[4], Val((2, 3, 0, 1)))
+    return @inbounds (line1, lines[2], line3, line4)
 end
 
 export scrypt

@@ -22,14 +22,14 @@ end
 
 function vprefetch(a::SIMD.FastContiguousArray{T,1}, i::Integer) where {T}
     GC.@preserve a begin
-        ptr = pointer(a, i)
+        ptr = @inbounds pointer(a, i)
         prefetch(ptr, Val{3}(), Val{0}())
     end
 end
 
 function vprefetchnt(a::SIMD.FastContiguousArray{T,1}, i::Integer) where {T}
     GC.@preserve a begin
-        ptr = pointer(a, i)
+        ptr = @inbounds pointer(a, i)
         prefetch(ptr, Val{0}(), Val{0}())
     end
 end

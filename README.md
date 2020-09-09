@@ -11,6 +11,7 @@ Skryptonite code is more fully documented, if you wish to understand the logic. 
 
 One thing this lacks right now is parallelization for the p parameter.
 
+Note: currently depends on a not-yet-merged PR for SIMD.jl
 
 
 Optimization notes:
@@ -25,7 +26,7 @@ Optimization notes:
  - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 150.639 ms (524678 allocations: 88.07 MiB) (commit 857cd7a92a797bd67ca22d684e051432d6f7e48d)
  - Got rid of an internal array I had introduced in the inner loop accidentally: 85.645 ms (390 allocations: 16.07 MiB) (commit 6a48816057494a1770c9406723440216da68df97)
  - Implemented nontemporal store instructions, increased time a bit, but more secure: 90.233 ms (390 allocations: 16.07 MiB)
- - Added @inbounds to load/store methods: 88.039 ms (70 allocations: 16.03 MiB)
+ - Added @inbounds to load/store methods: 79.289 ms (390 allocations: 16.07 MiB)
 
  16 MiB is about the lower limit of allocation amount for the parameters I was using.
 
