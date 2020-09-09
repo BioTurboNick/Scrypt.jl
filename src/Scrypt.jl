@@ -5,6 +5,7 @@ using SIMD
 
 include("data/Salsa512.jl")
 include("data/ScryptParameters.jl")
+include("util.jl")
 
 function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{UInt8}, derivedkeylength)
     derivedkeylength > 0 || ArgumentError("Must be > 0.") |> throw
@@ -91,34 +92,15 @@ end
 
 shuffleposition(j, halfblockcount) = (j - 2) ÷ 2 + 2 + (iseven(j) ? 0 : halfblockcount)
 
-import Base.stride
-import Base.strides
-
-function stride(a::Base.ReinterpretArray, i::Int)
-    a.parent isa StridedArray || ArgumentError("Parent must be strided.") |> throw
-    if i > ndims(a)
-        return length(a)
-    end
-    s = 1
-    for n = 1:(i-1)
-        s *= size(a, n)
-    end
-    return s
-end
-
-function strides(a::Base.ReinterpretArray)
-    a.parent isa StridedArray || ArgumentError("Parent must be strided.") |> throw
-    Base.size_to_strides(1, size(a)...)
-end
-
 uint32view(x, i) = reinterpret(UInt32, view(x, i:i))
 vloadsalsa(x, i) = vloada(Vec{16, UInt32}, uint32view(x, i), 1)
 vloadsalsant(x, i) = vloadnt(Vec{16, UInt32}, uint32view(x, i), 1)
 vstoresalsa(v, x, i) = vstorea(v, uint32view(x, i), 1)
+vstoresalsant(v, x, i) = vstorent(v, uint32view(x, i), 1)
 
 function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
     block = vloadsalsa(workingbuffer, i)
-    vstoresalsa(block, scryptelement, i)
+    vstoresalsant(block, scryptelement, i)
     return block
 end
 
@@ -126,8 +108,17 @@ function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptbloc
     for i ∈ 1:N
         n = integerify(workingbuffer, N)
         scryptelement = reshape(view(scryptblock, :, n), 2r)
+
+        for j ∈ 1:r # prefetch first half of the element
+            vprefetchnt(scryptelement, j)
+        end
+
         previousblock = lastblock = load_xor(workingbuffer, scryptelement, 1)
         for j ∈ 2:2r
+            if j ≤ (r + 1) # prefetch one additional block through end
+                vprefetchnt(scryptelement, r + j - 1)
+            end
+
             block = load_xor(workingbuffer, scryptelement, j)
             block = mixblock_shuffle_store!(block, previousblock, shufflebuffer, shuffleposition(j, r))
             previousblock = block
@@ -153,15 +144,6 @@ function mixblock_shuffle_store!(block, previousblock, shufflebuffer, i)
     return block
 end
 
-splitblock(block) = (shufflevector(block, Val((0,1,2,3))),
-                     shufflevector(block, Val((4,5,6,7))),
-                     shufflevector(block, Val((8,9,10,11))),
-                     shufflevector(block, Val((12,13,14,15))))
-
-joinlines(lines) = shufflevector(shufflevector(lines[1], lines[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
-                                 shufflevector(lines[3], lines[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
-                                 Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
-
 function salsa20(block, iterations)
     inputblock = block
 
@@ -175,6 +157,15 @@ function salsa20(block, iterations)
     block += inputblock
     return block
 end
+
+splitblock(block) = (shufflevector(block, Val((0,1,2,3))),
+                     shufflevector(block, Val((4,5,6,7))),
+                     shufflevector(block, Val((8,9,10,11))),
+                     shufflevector(block, Val((12,13,14,15))))
+
+joinlines(lines) = shufflevector(shufflevector(lines[1], lines[2], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                                 shufflevector(lines[3], lines[4], Val((0, 1, 2, 3, 4, 5, 6, 7))),
+                                 Val((0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)))
 
 function salsamix(lines)
     line1, line2, line3, line4 = lines
