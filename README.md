@@ -21,19 +21,13 @@ Optimization notes:
  - Changed salsamix!() function to loop over rows instead of over columns, paradoxically: 1.130 s (17234346 allocations: 1.48 GiB) (commit 94e620944ca398af78eac778ea55580d81972343)
  - Fully implemented SIMD for Salsa20/8 instead of StaticArrays: 312.388 ms (4651434 allocations: 471.02 MiB) (commit c08f960f82f043e0443b73307542ba30ecd97d0b)
  - Cut down a few allocations by using `@code_warntype` to tighten up function types, but minimal improvment overall.
- - Further vectorized, removed some abstraction. Weirdly, vectorization of the prepare/restore functions made it marginally slower, although no difference in allocations: 261.690 ms (1311110 allocations: 196.05 MiB)
- - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 150.639 ms (524678 allocations: 88.07 MiB)
- - Got rid of an internal array I had introduced in the inner loop accidentally: 85.645 ms (390 allocations: 16.07 MiB)
+ - Further vectorized, removed some abstraction. Weirdly, vectorization of the prepare/restore functions made it marginally slower, although no difference in allocations, did not keep: 261.690 ms (1311110 allocations: 196.05 MiB)
+ - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 150.639 ms (524678 allocations: 88.07 MiB) (commit 857cd7a92a797bd67ca22d684e051432d6f7e48d)
+ - Got rid of an internal array I had introduced in the inner loop accidentally: 85.645 ms (390 allocations: 16.07 MiB) (commit 6a48816057494a1770c9406723440216da68df97)
  - Implemented nontemporal store instructions, increased time a bit, but more secure: 90.233 ms (390 allocations: 16.07 MiB)
  - Added @inbounds to load/store methods: 88.039 ms (70 allocations: 16.03 MiB)
 
  16 MiB is about the lower limit of allocation amount for the parameters I was using.
 
 
- End result: Only ~5 times slower than my original C++/C# package, after starting ~525 times slower. A bit more optimization to try to squeeze out.
-
-The original C++ code had some advantages that I don't currently have access to, without a lot more work:
-1. Prefetching instructions. While CPUs are pretty good at figuring out when sequential access is happening, the point of this algorithm means you're operating barely into sequential read territory during the `mixwithscryptblock` function. Explicit prefetching thus allows you to tell the CPU to pull the data before you need it, so it doesn't have to wait for the data to arrive from RAM.
-2. Streaming store instructions. During the `fillscryptblock` function, pushing the data straight to RAM and avoiding the caches again reduces cache thrashing. There's also a concern about cache timing attacks on an algorithm, and keeping that data out of the cache reduces that possibility.
-3. Flush instructions. After using a value in `mixwithscryptblock`, flushing the temporary data out of the cache again reduces cache timing attackks, as in 4. This may marginally reduce performance.
-4. Other security considerations: pinning the arrays in the same memory locations and erasing the memory when done.
+ End result: Only ~2 times slower than my original C++/C# package, after starting ~525 times slower. A bit more optimization to try to squeeze out.
