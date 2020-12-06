@@ -11,6 +11,17 @@ Skryptonite code is more fully documented, if you wish to understand the logic. 
 
 One thing this lacks right now is parallelization for the p parameter.
 
+Example:
+```
+r = 8
+N = 16384
+p = 1
+key = Vector{UInt8}(b"pleaseletmein")
+salt = Vector{UInt8}(b"SodiumChloride")
+derivedkeylength = 64 # bytes
+scrypt(ScryptParameters(r, N, p), key, salt, derivedkeylength)
+```
+
 
 Optimization notes:
  - Initial: 7.511 s (93602212 allocations: 8.63 GiB) (commit 79ccff573b132d9079f908b02a717b58fa71a710)
