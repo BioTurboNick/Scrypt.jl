@@ -11,8 +11,6 @@ Skryptonite code is more fully documented, if you wish to understand the logic. 
 
 One thing this lacks right now is parallelization for the p parameter.
 
-Note: currently depends on a not-yet-merged PR for SIMD.jl
-
 
 Optimization notes:
  - Initial: 7.511 s (93602212 allocations: 8.63 GiB) (commit 79ccff573b132d9079f908b02a717b58fa71a710)
