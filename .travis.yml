@@ -10,10 +10,6 @@ julia:
   - 1.5
   - 1.6
   - nightly
-  
-env:
-  global:
-    - JULIA_DEPOT_PATH=c:\temp
 
 matrix:
   allow_failures:
