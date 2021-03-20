@@ -7,6 +7,7 @@ Port of my [Skryptonite](https://github.com/BioTurboNick/Skryptonite) C++/C# imp
 
 I make no guarantees other than that it passes the test vectors from the original paper. Contributions welcome.
 
+
 Skryptonite code is more fully documented, if you wish to understand the logic. But in brief, the data is rearranged for optimal internal operations by placing the last block first and organizing the internal matrix blocks so that the diagonals are moved into columns.
 
 One thing this lacks right now is parallelization for the p parameter.
