@@ -22,7 +22,6 @@ derivedkeylength = 64 # bytes
 scrypt(ScryptParameters(r, N, p), key, salt, derivedkeylength)
 ```
 
-
 Optimization notes:
  - Initial: 7.511 s (93602212 allocations: 8.63 GiB) (commit 79ccff573b132d9079f908b02a717b58fa71a710)
  - Moved constant array selectors into global constants: 7.206 s (81019300 allocations: 7.32 GiB) (commit 9195adc4a87f06068ba6b3e7da23188cf9c22c67)
