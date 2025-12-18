@@ -222,31 +222,22 @@ function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer
     end
     return scryptblock, workingbuffer, shufflebuffer
 end
+
 function fillscryptblock_new!(scryptblock_new::Array{UInt32, 3}, workingbuffer_new::Matrix{UInt32}, shufflebuffer_new::Matrix{UInt32}, r, N) 
     # TODO: check for duplication later
-    previousblock_new = Vector{UInt32}(undef, 16);
-    block_new = Vector{UInt32}(undef, 16);
-    #=
-    inplace edit: block_new (workingbuffer_new), shufflebuffer_new[:,i] (stored as final)
-    not edit: `previousblock_new`
-    =#
+    # inplace edit: block_new (workingbuffer_new), shufflebuffer_new[:,i] (stored as final)
     @inbounds for i ∈ 1:N
         scryptelement_new = view(scryptblock_new, :, :, i)
-        # previousblock = lastblock = load_store!(workingbuffer, scryptelement, 1)
-        last_block_new = @view workingbuffer_new[:, 1]
-        scryptelement_new[:, 1] .= last_block_new
-        previousblock_new .= last_block_new
+        previousblock_new = @view workingbuffer_new[:, 1]
+        scryptelement_new[:, 1] .= previousblock_new
         @inbounds for j ∈ 2:2r
-            # block = load_store!(workingbuffer, scryptelement, j)
-            block_new .= @view workingbuffer_new[:, j] #ok
+            block_new = @view workingbuffer_new[:, j] #ok
             scryptelement_new[:, j] .= block_new
 
             Scrypt.mixblock_shuffle_store_new!(block_new, previousblock_new, shufflebuffer_new, Scrypt.shuffleposition(j, r))
-            # block_new, shufflebuffer_new NOT OK
-            # previousblock_new, workingbuffer_new ok
-            previousblock_new .= block_new
+            previousblock_new = block_new
         end
-        block_new .= @view workingbuffer_new[:, 1]
+        block_new = @view workingbuffer_new[:, 1]
         Scrypt.mixblock_shuffle_store_new!(block_new, previousblock_new, shufflebuffer_new, 1)
         workingbuffer_new, shufflebuffer_new = shufflebuffer_new, workingbuffer_new
     end
@@ -295,23 +286,15 @@ function mixwithscryptblock_new!(workingbuffer_new::Matrix{UInt32}, scryptblock_
     previousblock_new = Vector{UInt32}(undef, 16);
     lastblock_new = Vector{UInt32}(undef, 16);
     block_new = Vector{UInt32}(undef, 16);
-    @inbounds for i ∈ 1:N
+    @inbounds for _ ∈ 1:N
         n = Scrypt.integerify(workingbuffer_new, N)
         scryptelement_new = view(scryptblock_new, :, :, n)
-
-        # for j ∈ 1:r # prefetch first half of the element
-        #     vprefetchnt(scryptelement_new, j)
-        # end
 
         @inbounds for m in 1:16  # load_xor
             previousblock_new[m] = lastblock_new[m] = workingbuffer_new[m, 1] ⊻ scryptelement_new[m, 1]
         end
 
         for j ∈ 2:2r
-            # if j ≤ (r + 1) # prefetch one additional block through end
-            #     vprefetchnt(scryptelement, r + j - 1)
-            # end
-
             @inbounds for m in 1:16
                 block_new[m] = workingbuffer_new[m, j] ⊻ scryptelement_new[m, j]
             end
@@ -367,7 +350,7 @@ function salsa20(block, iterations)
     block += inputblock
     return block
 end
-function salsa20_new!(shufflebuffer_new, i::Int, block_new::Vector{UInt32}, iterations::Int)
+function salsa20_new!(shufflebuffer_new, i::Int, block_new::AbstractVector{UInt32}, iterations::Int)
     @inbounds shufflebuffer_new[:, i] = block_new
     # lines = splitblock(block_new) # convert to tuple of 4 vectors: 1:4,5:8,9:12,13:16
     line1 = @inbounds @view shufflebuffer_new[1:4, i]
