@@ -54,6 +54,9 @@ function vprefetchnt(a::SIMD.FastContiguousArray{T,1}, i::Integer) where {T}
         prefetch(ptr, Val{0}(), Val{0}())
     end
 end
+function vprefetchnt(ptr::Ptr{T}) where {T}
+    prefetch(ptr, Val{0}(), Val{0}())
+end
 
 
 if VERSION < v"1.6.0-DEV"

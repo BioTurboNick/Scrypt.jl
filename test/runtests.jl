@@ -1,7 +1,6 @@
 using Scrypt
 using Test
 
-@profview scrypt(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64)
 @testset "Scrypt Tests" begin
     expected = [hex2bytes("77d6576238657b203b19ca42c18a0497f16b4844e3074ae8dfdffa3fede21442fcd0069ded0948f8326a753a0fc81f17e8d3e0fb2e0d3628cf35e20c38d18906"),
                 hex2bytes("b034a96734ebdc650fca132f40ffde0823c2f780d675eb81c85ec337d3b1176017061beeb3ba18df59802b95a325f5f850b6fd9efb1a6314f835057c90702b19"),
@@ -20,18 +19,18 @@ using Test
     SCRYPT_PARAMS = ScryptParameters(8, 1024, 16)
     for i in 1:100
         key = rand(UInt8, rand(1:128))
-        # salt = rand(UInt8, rand(0:64))
+        salt = rand(UInt8, rand(0:64))
         dklen = rand(16:128)
 
-        old = Scrypt.scrypt_0(SCRYPT_PARAMS, key, UInt8[], dklen)
-        new = Scrypt.scrypt(SCRYPT_PARAMS, key, dklen)
+        old = Scrypt.scrypt_0(SCRYPT_PARAMS, key, salt, dklen)
+        new = Scrypt.scrypt(SCRYPT_PARAMS, key, salt, dklen)
 
         @test length(old) == length(new)
         @test old == new
     end
 end
 
-using Revise, Nettle, Scrypt, Nettle_jll, BenchmarkTools, Test, SIMD
+using Revise, Nettle, Scrypt, Nettle_jll, BenchmarkTools, Test, SIMD, LoopVectorization
 Salsa512 = Scrypt.Salsa512
 
 ##### common
@@ -41,6 +40,23 @@ key = Vector{UInt8}(b"password")
 salt = UInt8[]
 derivedkeylength = Scrypt.bufferlength(parameters)
 buf_len = derivedkeylength
+
+# check same as old scrypt
+Scrypt.scrypt(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64) == Scrypt.scrypt_0(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64)
+
+# speed test
+@time Scrypt.scrypt(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64);
+@profview Scrypt.scrypt(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64)
+@BenchmarkTools.benchmark Scrypt.scrypt(ScryptParameters(8, 1024, 16), Vector{UInt8}(b"password"), Vector{UInt8}(b"NaCl"), 64)
+# Range (min … max):  71.562 ms … 89.970 ms  ┊ GC (min … max): 0.00% … 0.00%
+#  Time  (median):     72.522 ms              ┊ GC (median):    0.00%
+#  Time  (mean ± σ):   73.563 ms ±  2.822 ms  ┊ GC (mean ± σ):  0.00% ± 0.00%
+
+#     ▆█▆█▁ ▁                                                    
+#   ▄▄█████▇█▁▇▁▁▆▇▄▆▆▆▄▄▁▄▁▁▁▁▁▁▁▁▁▁▁▁▄▁▁▁▁▁▁▁▁▁▁▁▄▁▁▁▄▄▄▁▁▁▁▄ ▁
+#   71.6 ms         Histogram: frequency by time        80.3 ms <
+
+#  Memory estimate: 1.08 MiB, allocs estimate: 149.
 
 # compare buffer diff
 buffer = Scrypt.pbkdf2_sha256_1(key, salt, Scrypt.bufferlength(parameters))

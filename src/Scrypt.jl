@@ -32,9 +32,7 @@ function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{U
     shufflebuffer_new = Matrix{UInt32}(undef, (16, Scrypt.elementblockcount(parameters)))
     scryptblock_new = Array{UInt32,3}(undef, 16, 2*parameters.r, parameters.N);
     for i ∈ 1:parameters.p
-        # element = reshape(@view(parallelbuffer[:, i]), Scrypt.elementblockcount(parameters))
-        # smix!(element, parameters)
-        element_new = reshape(@view(parallelbuffer[:, :, i]), (16, Scrypt.elementblockcount(parameters)))
+        element_new = @view(parallelbuffer[:, :, i])
         Scrypt.smix_new!(scryptblock_new, workingbuffer_new, shufflebuffer_new, element_new, parameters)
 
     end
@@ -45,20 +43,16 @@ end
 function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, derivedkeylength::Integer)
     derivedkeylength > 0 || ArgumentError("Must be > 0.") |> throw
 
-    # buffer = Scrypt.pbkdf2_sha256_1(key, Scrypt.bufferlength(parameters))
-    # parallelbuffer = reshape(reinterpret(Scrypt.Salsa512, buffer), (Scrypt.elementblockcount(parameters), parameters.p));
-
     buffer = Scrypt.pbkdf2_sha256_1(key, Scrypt.bufferlength(parameters))
     parallelbuffer = unsafe_wrap(Array{UInt32,3}, Ptr{UInt32}(pointer(buffer)), (16, Scrypt.elementblockcount(parameters), parameters.p));
 
     workingbuffer_new = Matrix{UInt32}(undef, (16, Scrypt.elementblockcount(parameters)))
     shufflebuffer_new = Matrix{UInt32}(undef, (16, Scrypt.elementblockcount(parameters)))
     scryptblock_new = Array{UInt32,3}(undef, 16, 2*parameters.r, parameters.N);
-    tmp = Vector{UInt32}(undef, 4);
 
     for i ∈ 1:parameters.p
         # element = reshape(@view(parallelbuffer[:, i]), Scrypt.elementblockcount(parameters))
-        element_new = reshape(@view(parallelbuffer[:, :, i]), (16, Scrypt.elementblockcount(parameters)))
+        element_new = @view(parallelbuffer[:, :, i])
         # smix!(element, parameters)
         Scrypt.smix_new!(scryptblock_new, workingbuffer_new, shufflebuffer_new, element_new, parameters)
     end
@@ -172,9 +166,9 @@ end #permute! is no faster than explicit vectorization, even with a few extra al
 function prepare_new!(dest::Matrix{UInt32}, src::AbstractArray{UInt32, 2})
     ysize = size(src, 2)
 
-    @inbounds dest[:, 1] .= @view src[SALSA_BLOCK_REORDER_INDEXES, ysize]
+    @inbounds dest[:, 1] = @view src[SALSA_BLOCK_REORDER_INDEXES, ysize]
     @inbounds for i in 1:ysize-1
-        dest[:, i+1] .= @view src[SALSA_BLOCK_REORDER_INDEXES, i]
+        dest[:, i+1] = @view src[SALSA_BLOCK_REORDER_INDEXES, i]
     end
 
     return dest
@@ -192,10 +186,10 @@ end
 function restore_new!(dest::AbstractMatrix{UInt32}, src::AbstractMatrix{UInt32})
 
     # for (i, j) ∈ zip(si, dj)
-    @inbounds dest[SALSA_BLOCK_REORDER_INDEXES, end] .= @view src[:, 1]
+    @inbounds dest[SALSA_BLOCK_REORDER_INDEXES, end] = @view src[:, 1]
     ysize = size(src, 2)
     @inbounds for i in 2:ysize
-         dest[SALSA_BLOCK_REORDER_INDEXES, i-1] .= @view src[:, i]
+         dest[SALSA_BLOCK_REORDER_INDEXES, i-1] = @view src[:, i]
     end
     return dest
 end
@@ -205,16 +199,9 @@ function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer
     for i ∈ 1:N
         scryptelement = view(scryptblock, :, i)
         previousblock = lastblock = Scrypt.load_store!(workingbuffer, scryptelement, 1)
-        # workingbuffer[1] -> lastblock, previousblock, scryptelement[1]
-        # <16 x UInt32>[0xfc2fc2a5, 0x2f2acbb4, 0x6e9e384a, 0xaee24898, 0xf94480b6, 0x5d55cc33, 0xb4669af9, 0xdef13833, 0xac0eda9d, 0x4324a8a2, 0x060492e5, 0x37c7b6dd, 0xcd46de96, 0x143b4810, 0xafc7723d, 0xc8502d97]
         for j ∈ 2:2r
             block = Scrypt.load_store!(workingbuffer, scryptelement, j)
-            # <16 x UInt32>[0xcc3ff8bc, 0xfd1527f6, 0x110c876d, 0x721f4f24, 0x102f23c1, 0xa57b723b, 0x74027a85, 0xafef28b2, 0x10cf339b, 0xa3c80756, 0x7b95c39d, 0xa17c03a2, 0xc7746910, 0x105c158e, 0xc0e76aa0, 0xaba290f2]
             block = Scrypt.mixblock_shuffle_store!(block, previousblock, shufflebuffer, Scrypt.shuffleposition(j, r))
-            # block = <16 x UInt32>[0xc4c0f369, 0x117e32d9, 0x01621216, 0x787e69e8, 0x81b2bac0, 0x012fcc7a, 0xba1c59db, 0x471b3e6f, 0xc39af7d6, 0x542bb196, 0xcb46c87b, 0x32d6f806, 0x956746fc, 0xa23f17ca, 0x9b588ebf, 0x3ae8a61e]
-            # previous block not changed
-            # shufflebuffer[2] = 0x3ae8a61e9b588ebfa23f17ca956746fc32d6f806cb46c87b542bb196c39af7d6471b3e6fba1c59db012fcc7a81b2bac0787e69e801621216117e32d9c4c0f369
-            # workingbuffer[2] = scryptelement[2] = 0xaba290f2c0e76aa0105c158ec7746910a17c03a27b95c39da3c8075610cf339bafef28b274027a85a57b723b102f23c1721f4f24110c876dfd1527f6cc3ff8bc
             previousblock = block
         end
         Scrypt.mixblock_shuffle_store!(lastblock, previousblock, shufflebuffer, 1)
@@ -223,7 +210,7 @@ function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer
     return scryptblock, workingbuffer, shufflebuffer
 end
 
-function fillscryptblock_new!(scryptblock_new::Array{UInt32, 3}, workingbuffer_new::Matrix{UInt32}, shufflebuffer_new::Matrix{UInt32}, r, N) 
+function fillscryptblock_new!(scryptblock_new::Array{UInt32, 3}, workingbuffer_new::Matrix{UInt32}, shufflebuffer_new::Matrix{UInt32}, r::Int, N::Int) 
     # TODO: check for duplication later
     # inplace edit: block_new (workingbuffer_new), shufflebuffer_new[:,i] (stored as final)
     @inbounds for i ∈ 1:N
@@ -258,7 +245,7 @@ function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::Abs
     return block
 end
 
-function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptblock, shufflebuffer::AbstractVector{Salsa512}, r, N)
+function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptblock, shufflebuffer::AbstractVector{Salsa512}, r::Int, N::Int)
     for i ∈ 1:N
         n = Scrypt.integerify(workingbuffer, N)
         scryptelement = reshape(view(scryptblock, :, n), 2r)
@@ -309,7 +296,7 @@ function mixwithscryptblock_new!(workingbuffer_new::Matrix{UInt32}, scryptblock_
 end
 
 integerify(x::AbstractVector{Salsa512}, N) = uint32view(x, 1)[5] % N + 1
-integerify(x::Matrix{UInt32}, N) = @inbounds x[5,1] % N + 1
+integerify(x::Matrix{UInt32}, N::Int) = @inbounds x[5,1] % N + 1
 
 function load_xor(workingbuffer::AbstractVector{Salsa512}, scryptelement::AbstractVector{Salsa512}, i)
     block = vloadsalsa(workingbuffer, i)
@@ -319,10 +306,7 @@ end
 
 function mixblock_shuffle_store!(block, previousblock, shufflebuffer, i)
     block ⊻= previousblock
-    # <16 x UInt32>[0x30103a19, 0xd23fec42, 0x7f92bf27, 0xdcfd07bc, 0xe96ba377, 0xf82ebe08, 0xc064e07c, 0x711e1081, 0xbcc1e906, 0xe0ecaff4, 0x7d915178, 0x96bbb57f, 0x0a32b786, 0x04675d9e, 0x6f20189d, 0x63f2bd65]
     block = salsa20(block, 8)
-    # block_sasa = Scrypt.salsa20(block, 8)
-    # <16 x UInt32>[0xc4c0f369, 0x117e32d9, 0x01621216, 0x787e69e8, 0x81b2bac0, 0x012fcc7a, 0xba1c59db, 0x471b3e6f, 0xc39af7d6, 0x542bb196, 0xcb46c87b, 0x32d6f806, 0x956746fc, 0xa23f17ca, 0x9b588ebf, 0x3ae8a61e]
     vstoresalsa(block, shufflebuffer, i)
     return block
 end
@@ -330,7 +314,7 @@ end
 inplace edit: `block_new`, `shufflebuffer_new[:,i]`
 not edit: `previousblock_new`
 """
-function mixblock_shuffle_store_new!(block_new, previousblock_new, shufflebuffer_new, i)
+function mixblock_shuffle_store_new!(block_new::AbstractVector{UInt32}, previousblock_new::AbstractVector{UInt32}, shufflebuffer_new::Matrix{UInt32}, i::Int)
     block_new .⊻= previousblock_new
     # block_new_good = deepcopy(block_new)
     salsa20_new!(shufflebuffer_new, i, block_new, 8)
@@ -350,21 +334,20 @@ function salsa20(block, iterations)
     block += inputblock
     return block
 end
-function salsa20_new!(shufflebuffer_new, i::Int, block_new::AbstractVector{UInt32}, iterations::Int)
+function salsa20_new!(shufflebuffer_new::Matrix{UInt32}, i::Int, block_new::AbstractVector{UInt32}, iterations::Int)
     @inbounds shufflebuffer_new[:, i] = block_new
-    # lines = splitblock(block_new) # convert to tuple of 4 vectors: 1:4,5:8,9:12,13:16
-    line1 = @inbounds @view shufflebuffer_new[1:4, i]
-    line2 = @inbounds @view shufflebuffer_new[5:8, i]
-    line3 = @inbounds @view shufflebuffer_new[9:12, i]
-    line4 = @inbounds @view shufflebuffer_new[13:16, i]
-    block_shufflebuffer = @inbounds @view shufflebuffer_new[:, i]
+
+    line1 = @inbounds @view block_new[1:4]
+    line2 = @inbounds @view block_new[5:8]
+    line3 = @inbounds @view block_new[9:12]
+    line4 = @inbounds @view block_new[13:16]
     for _ ∈ 1:iterations
         salsamix!(line1, line2, line3, line4)
-        salsatranspose!(block_shufflebuffer)
+        salsatranspose!(block_new)
     end
-    block_new .+= block_shufflebuffer
-    block_shufflebuffer .= block_new
 
+    block_new .+= @inbounds @view shufflebuffer_new[:, i]
+    @inbounds shufflebuffer_new[:, i] = block_new
 end
 
 splitblock(block) = (shufflevector(block, Val((0,1,2,3))),
@@ -384,11 +367,12 @@ function salsamix(lines::NTuple{4, Vec{4, UInt32}})
     line2 = salsa(line4, line1, line2, 18)
     return (line1, line2, line3, line4)
 end
-function salsamix!(line1::T, line2::T, line3::T, line4::T) where T<:AbstractArray
-    line3 = salsa!(line1, line2, line3, 7)
-    line4 = salsa!(line2, line3, line4, 9)
-    line1 = salsa!(line3, line4, line1, 13)
-    line2 = salsa!(line4, line1, line2, 18)
+function salsamix!(line1::T, line2::T, line3::T, line4::T) where T<:AbstractArray{UInt32}
+    # salsa!: the third argument is modified in place
+    salsa!(line1, line2, line3, 7)
+    salsa!(line2, line3, line4, 9)
+    salsa!(line3, line4, line1, 13)
+    salsa!(line4, line1, line2, 18)
 end # ok
 
 
@@ -397,14 +381,14 @@ function salsa(addend1::Vec{4, UInt32}, addend2::Vec{4, UInt32}, xor_operand::Ve
     rot = (sum << rotationmagnitude) | (sum >>> (sizeof(UInt32) * 8 - rotationmagnitude))
     return xor_operand ⊻ rot
 end
-@eval function salsa!(addend1::T, addend2::T, xor_operand::T, rotationmagnitude::Int) where T<:AbstractArray
-    one2four = eachindex(xor_operand)
+@eval function salsa!(addend1::T, addend2::T, xor_operand::T, rotationmagnitude::Int) where T<:AbstractArray{UInt32}
+    # the third argument (xor_operand) is modified in place.
+    # the following is the expansion of @simd ivdep for loop. @simd macro expansion is heavy, and the following is simplified for better performance.
     idx = 0
     @inbounds while idx < 4
-        i = Base.simd_index(one2four, 0, idx)
-        sumtmp = addend1[i] + addend2[i]
-        xor_operand[i] ⊻= sumtmp << rotationmagnitude | sumtmp >>> (32 - rotationmagnitude)
         idx += 1
+        sumtmp = addend1[idx] + addend2[idx]
+        xor_operand[idx] ⊻= sumtmp << rotationmagnitude | sumtmp >>> (32 - rotationmagnitude)
         $(Expr(:loopinfo, Symbol("julia.simdloop"), Symbol("julia.ivdep")))
     end
 
@@ -459,7 +443,14 @@ function salsatranspose!(v::AbstractVector{UInt32})
     end
     v
 end
-
+# function salsatranspose!(v::AbstractVector{UInt32})
+#     @inbounds begin
+#         l = SIMD.vload(Vec{16, UInt32}, v, 1)
+#         l = shufflevector(l, Val((11, 8, 9, 10, 4, 5, 6, 7, 1, 2, 3, 0, 14, 15, 12, 13)))
+#         SIMD.vstore(l, v, 1)
+#     end
+#     v
+# end
 
 export scrypt
 export ScryptParameters
