@@ -1,6 +1,7 @@
 module Scrypt
 
-using Nettle
+import Nettle: HMACState, digest!, update!
+import Nettle_jll: libnettle
 using SIMD
 
 include("data/Salsa512.jl")
@@ -26,22 +27,29 @@ const HASH_LENGTH = 256 ÷ 8
 function pbkdf2_sha256_1(key, salt::Vector{UInt8}, derivedkeylength)
     blockcount = cld(derivedkeylength, HASH_LENGTH)
     
-    salt = [salt; zeros(UInt8, 4)]
+    push!(salt, 0x00, 0x00, 0x00, 0x00)
     salttail = view(salt, length(salt) - 3:length(salt))
     
     derivedkey = Matrix{UInt8}(undef, HASH_LENGTH, blockcount)
 
     state = HMACState("SHA256", key)
+    digestbuffer = Vector{UInt8}(undef, state.hash_type.digest_size)
     for i ∈ 1:blockcount
-        salttail[:] = reinterpret(UInt8, [UInt32(i)]) |> reverse
-        derivedkey[:, i] = digest!(update!(state, salt))
+        salttail[:] .= reinterpret(NTuple{4, UInt8}, UInt32(i)) |> reverse
+        derivedkey[:, i] = digest!(digestbuffer, update!(state, salt))
     end
 
-    derivedkey = reshape(derivedkey, blockcount * HASH_LENGTH)[1:derivedkeylength]
+    derivedkey = resize!(vec(derivedkey), derivedkeylength)
     return derivedkey
 end
 
-
+function digest!(digestbuffer::Vector{UInt8}, state::HMACState)
+    length(digestbuffer) == state.hash_type.digest_size ||
+        throw(DimensionMismatch("`digestbuffer` must be of length $(state.hash_type.digest_size)"))
+    ccall((:nettle_hmac_digest, libnettle), Cvoid, (Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}, Ptr{Cvoid}, Csize_t,
+        Ptr{UInt8}), state.outer, state.inner, state.state, state.hash_type.ptr, sizeof(digestbuffer), digestbuffer)
+    return digestbuffer
+end
 
 function smix!(element::AbstractVector{Salsa512}, parameters::ScryptParameters)
     workingbuffer = prepare(element)
