@@ -52,25 +52,21 @@ end
 const SALSA_BLOCK_REORDER_INDEXES = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;  4;  9; 14;  3;  8]
 
 function prepare(src::AbstractVector{Salsa512})
+    n = length(src)
     dest = valloc(Salsa512, length(src))
-    si = 1:length(src)
-    dj = [2:length(dest); 1]
-
-    for (i, j) ∈ zip(si, dj)
-        dest[j] = src[i]
-        permute!(uint32view(dest, j), SALSA_BLOCK_REORDER_INDEXES)
+    uint32view(dest, 1) .= uint32view(src, n)[SALSA_BLOCK_REORDER_INDEXES]
+    for i ∈ 2:n
+        uint32view(dest, i) .= uint32view(src, i - 1)[SALSA_BLOCK_REORDER_INDEXES]
     end
-
     return dest
-end #permute! is no faster than explicit vectorization, even with a few extra allocations
+end
 
 function restore!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
-    si = 1:length(src)
-    dj = [length(dest); 1:length(dest) - 1]
-
-    for (i, j) ∈ zip(si, dj)
-        dest[j] = src[i]
-        invpermute!(uint32view(dest, j), SALSA_BLOCK_REORDER_INDEXES)
+    length(dest) == length(src) || throw(DimensionMismatch("dest and src must have the same length"))
+    n = length(src)
+    uint32view(dest, n)[SALSA_BLOCK_REORDER_INDEXES] .= uint32view(src, 1)
+    for i ∈ 2:n
+        uint32view(dest, i - 1)[SALSA_BLOCK_REORDER_INDEXES] .= uint32view(src, i)
     end
 end
 
