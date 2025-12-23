@@ -76,9 +76,8 @@ const SALSA_BLOCK_REORDER_INDEXES = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;
 function prepare!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
     n = length(src)
     uint32view(dest, 1) .= @view uint32view(src, n)[SALSA_BLOCK_REORDER_INDEXES]
-    uint32view(dest, 1) .= uint32view(src, n)[SALSA_BLOCK_REORDER_INDEXES]
     for i ∈ 2:n
-        uint32view(dest, i) .= uint32view(src, i - 1)[SALSA_BLOCK_REORDER_INDEXES]
+        uint32view(dest, i) .= @view uint32view(src, i - 1)[SALSA_BLOCK_REORDER_INDEXES]
     end
     return dest
 end
