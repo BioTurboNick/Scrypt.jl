@@ -8,7 +8,7 @@ Nettle = "49dea1ee-f6fa-5aa6-9a11-8816cee7d4b9"
 SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
 
 [compat]
-Nettle = "0.5"
+Nettle = "0.5, 1"
 SIMD = "3.2.1"
 julia = "1.5"
 
