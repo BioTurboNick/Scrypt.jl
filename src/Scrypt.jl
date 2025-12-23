@@ -183,10 +183,11 @@ function salsamix(lines)
 end
 
 function salsa(addend1, addend2, xor_operand, rotationmagnitude)
-    sum = addend1 + addend2
-    rot = (sum << rotationmagnitude) | (sum >>> (sizeof(UInt32) * 8 - rotationmagnitude))
-    return xor_operand ⊻ rot
+    sum = Tuple(addend1) .+ Tuple(addend2)
+    rot = (sum .<< rotationmagnitude) .| (sum .>>> (sizeof(UInt32) * 8 - rotationmagnitude))
+    return Vec{4, UInt32}(Tuple(xor_operand) .⊻ rot)
 end
+# @simd macro expansion is heavy, converting to tuples and broadcasting operations is faster
 
 function salsatranspose(lines)
     toline3 = @inbounds shufflevector(lines[1], Val((1, 2, 3, 0)))
