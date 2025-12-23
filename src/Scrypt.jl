@@ -14,12 +14,25 @@ function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{U
     buffer = pbkdf2_sha256_1(key, salt, bufferlength(parameters))
     parallelbuffer = reshape(reinterpret(Salsa512, buffer), (elementblockcount(parameters), parameters.p))
 
+    scryptblockbuffer = alloc_scryptblock_buffer(parameters)
+    workingbuffer = alloc_element_buffer(parameters)
+    shufflebuffer = alloc_element_buffer(parameters)
+
     for i ∈ 1:parameters.p
         element = @views reshape(parallelbuffer[:, i], elementblockcount(parameters))
-        smix!(element, parameters)
+        smix!(element, parameters, scryptblockbuffer, workingbuffer, shufflebuffer)
     end
 
     derivedkey = pbkdf2_sha256_1(key, buffer, derivedkeylength)
+end
+
+function alloc_scryptblock_buffer(parameters::ScryptParameters)
+    r, N = parameters.r, parameters.N
+    reshape(valloc(Salsa512, 2r * N), (2r, N))
+end
+
+function alloc_element_buffer(parameters::ScryptParameters)
+    valloc(Salsa512, 2parameters.r)
 end
 
 const HASH_LENGTH = 256 ÷ 8
@@ -51,19 +64,18 @@ function digest!(digestbuffer::Vector{UInt8}, state::HMACState)
     return digestbuffer
 end
 
-function smix!(element::AbstractVector{Salsa512}, parameters::ScryptParameters)
-    workingbuffer = prepare(element)
-    shufflebuffer = valloc(Salsa512, length(workingbuffer))
-    scryptblock, workingbuffer, shufflebuffer = fillscryptblock!(workingbuffer, shufflebuffer, parameters.r, parameters.N)
+function smix!(element::AbstractVector{Salsa512}, parameters::ScryptParameters, scryptblockbuffer::AbstractMatrix{Salsa512}, workingbuffer::AbstractVector{Salsa512}, shufflebuffer::AbstractVector{Salsa512})
+    prepare!(workingbuffer, element)
+    scryptblock, workingbuffer, shufflebuffer = fillscryptblock!(scryptblockbuffer, workingbuffer, shufflebuffer, parameters.r, parameters.N)
     workingbuffer = mixwithscryptblock!(workingbuffer, scryptblock, shufflebuffer, parameters.r, parameters.N)
     restore!(element, workingbuffer)
 end
 
 const SALSA_BLOCK_REORDER_INDEXES = [13;  2;  7; 12;  1;  6; 11; 16;  5; 10; 15;  4;  9; 14;  3;  8]
 
-function prepare(src::AbstractVector{Salsa512})
+function prepare!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
     n = length(src)
-    dest = valloc(Salsa512, length(src))
+    uint32view(dest, 1) .= @view uint32view(src, n)[SALSA_BLOCK_REORDER_INDEXES]
     uint32view(dest, 1) .= uint32view(src, n)[SALSA_BLOCK_REORDER_INDEXES]
     for i ∈ 2:n
         uint32view(dest, i) .= uint32view(src, i - 1)[SALSA_BLOCK_REORDER_INDEXES]
@@ -80,8 +92,7 @@ function restore!(dest::AbstractVector{Salsa512}, src::AbstractVector{Salsa512})
     end
 end
 
-function fillscryptblock!(workingbuffer::AbstractVector{Salsa512}, shufflebuffer::AbstractVector{Salsa512}, r, N)
-    scryptblock = reshape(valloc(Salsa512, 2r * N), (2r, N))
+function fillscryptblock!(scryptblock::AbstractMatrix{Salsa512}, workingbuffer::AbstractVector{Salsa512}, shufflebuffer::AbstractVector{Salsa512}, r, N)
     for i ∈ 1:N
         scryptelement = view(scryptblock, :, i)
         previousblock = lastblock = load_store!(workingbuffer, scryptelement, 1)
@@ -110,7 +121,7 @@ function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::Abs
     return block
 end
 
-function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptblock, shufflebuffer::AbstractVector{Salsa512}, r, N)
+function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptblock::AbstractMatrix{Salsa512}, shufflebuffer::AbstractVector{Salsa512}, r, N)
     for i ∈ 1:N
         n = integerify(workingbuffer, N)
         scryptelement = reshape(view(scryptblock, :, n), 2r)
