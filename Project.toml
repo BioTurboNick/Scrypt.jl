@@ -1,19 +1,29 @@
 name = "Scrypt"
 uuid = "2fdf5542-5ed4-5642-8140-83dcf60a5f79"
-version = "0.2.1"
-authors = ["Nicholas Bauer <nicholasbauer@outlook.com>"]
+authors = ["Nicholas Bauer <nicholasbauer@outlook.com> and Dr. Jiacheng Chuan <jiacheng_chuan@outlook.com>"]
+version = "0.2.2"
 
 [deps]
 Nettle = "49dea1ee-f6fa-5aa6-9a11-8816cee7d4b9"
-SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
+Nettle_jll = "4c82536e-c426-54e4-b420-14f461c4ed8b"
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 
-[compat]
-Nettle = "0.5"
-SIMD = "3.2.1"
-julia = "1.5"
+[weakdeps]
+JobSchedulers = "eeff360b-c02d-44d3-ab26-4013c616a17e"
+
+[extensions]
+ScryptExtJobSchedulers = "JobSchedulers"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+JobSchedulers = "eeff360b-c02d-44d3-ab26-4013c616a17e"
 
 [targets]
-test = ["Test"]
+test = ["Test", "JobSchedulers"]
+
+[compat]
+Nettle = "0.5, 1"
+Nettle_jll = "3"
+PrecompileTools = "1"
+JobSchedulers = "0.9, 0.10, 0.11, 0.12, 0.13, 1"
+julia = "1.8"
