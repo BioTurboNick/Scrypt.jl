@@ -25,21 +25,23 @@ const HASH_LENGTH = 256 ÷ 8
 
 function pbkdf2_sha256_1(key, salt::Vector{UInt8}, derivedkeylength)
     blockcount = cld(derivedkeylength, HASH_LENGTH)
-    lastblockbytes = derivedkeylength - (blockcount - 1) * HASH_LENGTH
     
     salt = [salt; zeros(UInt8, 4)]
     salttail = view(salt, length(salt) - 3:length(salt))
     
     derivedkey = Matrix{UInt8}(undef, HASH_LENGTH, blockcount)
 
+    state = HMACState("SHA256", key)
     for i ∈ 1:blockcount
         salttail[:] = reinterpret(UInt8, [UInt32(i)]) |> reverse
-        derivedkey[:, i] = digest("sha256", key, salt)
+        derivedkey[:, i] = digest!(update!(state, salt))
     end
 
     derivedkey = reshape(derivedkey, blockcount * HASH_LENGTH)[1:derivedkeylength]
     return derivedkey
 end
+
+
 
 function smix!(element::AbstractVector{Salsa512}, parameters::ScryptParameters)
     workingbuffer = prepare(element)
