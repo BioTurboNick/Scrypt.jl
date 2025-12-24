@@ -16,17 +16,31 @@ function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{U
     buffer = pbkdf2_sha256_1(key, salt, bufferlength(parameters))
     parallelbuffer = reshape(reinterpret(Salsa512, buffer), (elementblockcount(parameters), parameters.p))
 
-    @threads for chunk_idxs ∈ chunks(1:parameters.p; n = ntasks)
-        scryptblockbuffer = alloc_scryptblock_buffer(parameters)
-        workingbuffer = alloc_element_buffer(parameters)
-        shufflebuffer = alloc_element_buffer(parameters)
-        for i ∈ chunk_idxs
-            element = @views reshape(parallelbuffer[:, i], elementblockcount(parameters))
-            smix!(element, parameters, scryptblockbuffer, workingbuffer, shufflebuffer)
-        end
+    if ntasks == 1
+        _scrypt_loop!(parallelbuffer, parameters, 1:parameters.p)
+    else
+        _scrypt_loop_threaded!(parallelbuffer, parameters, ntasks)
     end
 
     derivedkey = pbkdf2_sha256_1(key, buffer, derivedkeylength)
+end
+
+function _scrypt_loop_threaded!(parallelbuffer::AbstractMatrix{Salsa512}, parameters::ScryptParameters, n::Int)
+    @threads for chunk_idxs ∈ chunks(1:parameters.p; n)
+        _scrypt_loop!(parallelbuffer, parameters, chunk_idxs)
+    end
+    return parallelbuffer
+end
+
+function _scrypt_loop!(parallelbuffer::AbstractMatrix{Salsa512}, parameters::ScryptParameters, loop_indexes::UnitRange{Int})
+    scryptblockbuffer = alloc_scryptblock_buffer(parameters)
+    workingbuffer = alloc_element_buffer(parameters)
+    shufflebuffer = alloc_element_buffer(parameters)
+    for i ∈ loop_indexes
+        element = @views reshape(parallelbuffer[:, i], elementblockcount(parameters))
+        smix!(element, parameters, scryptblockbuffer, workingbuffer, shufflebuffer)
+    end
+    return parallelbuffer
 end
 
 function alloc_scryptblock_buffer(parameters::ScryptParameters)
