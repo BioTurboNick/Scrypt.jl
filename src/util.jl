@@ -1,3 +1,4 @@
+import SIMD.Intrinsics: argtoptr, d
 """
 ReadOrWrite: 0 for read, 1 for write.
 Function follows the LLVM definition
@@ -11,10 +12,10 @@ Adapted from SIMDPirates.jl
     mod = """
             declare void @llvm.prefetch(i8*, i32, i32, i32)
 
-            define void @entry(i$(8sizeof(Int))) #0 {
+            define void @entry($(d[Ptr])) #0 {
             top:
-                %addr = inttoptr i$(8sizeof(Int)) %0 to i8*
-                call void @llvm.prefetch(i8* %addr, i32 $ReadOrWrite, i32 $Locality, i32 1)
+                %ptr = $argtoptr $(d[Ptr]) %0 to i8*
+                call void @llvm.prefetch(i8* %ptr, i32 $ReadOrWrite, i32 $Locality, i32 1)
                 ret void
             }
 
