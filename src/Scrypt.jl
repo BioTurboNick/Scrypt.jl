@@ -1,26 +1,29 @@
 module Scrypt
 
+import ChunkSplitters: chunks
 import Nettle: HMACState, digest!, update!
 import Nettle_jll: libnettle
 using SIMD
+import Base.Threads: @threads, nthreads
 
 include("data/Salsa512.jl")
 include("data/ScryptParameters.jl")
 include("util.jl")
 
-function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{UInt8}, derivedkeylength)
+function scrypt(parameters::ScryptParameters, key::Vector{UInt8}, salt::Vector{UInt8}, derivedkeylength; ntasks = nthreads())
     derivedkeylength > 0 || ArgumentError("Must be > 0.") |> throw
 
     buffer = pbkdf2_sha256_1(key, salt, bufferlength(parameters))
     parallelbuffer = reshape(reinterpret(Salsa512, buffer), (elementblockcount(parameters), parameters.p))
 
-    scryptblockbuffer = alloc_scryptblock_buffer(parameters)
-    workingbuffer = alloc_element_buffer(parameters)
-    shufflebuffer = alloc_element_buffer(parameters)
-
-    for i ∈ 1:parameters.p
-        element = @views reshape(parallelbuffer[:, i], elementblockcount(parameters))
-        smix!(element, parameters, scryptblockbuffer, workingbuffer, shufflebuffer)
+    @threads for chunk_idxs ∈ chunks(1:parameters.p; n = ntasks)
+        scryptblockbuffer = alloc_scryptblock_buffer(parameters)
+        workingbuffer = alloc_element_buffer(parameters)
+        shufflebuffer = alloc_element_buffer(parameters)
+        for i ∈ chunk_idxs
+            element = @views reshape(parallelbuffer[:, i], elementblockcount(parameters))
+            smix!(element, parameters, scryptblockbuffer, workingbuffer, shufflebuffer)
+        end
     end
 
     derivedkey = pbkdf2_sha256_1(key, buffer, derivedkeylength)

@@ -4,11 +4,13 @@ version = "0.2.2"
 authors = ["Nicholas Bauer <nicholasbauer@outlook.com>"]
 
 [deps]
+ChunkSplitters = "ae650224-84b6-46f8-82ea-d812ca08434e"
 Nettle = "49dea1ee-f6fa-5aa6-9a11-8816cee7d4b9"
 Nettle_jll = "4c82536e-c426-54e4-b420-14f461c4ed8b"
 SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
 
 [compat]
+ChunkSplitters = "3.1.2"
 Nettle = "0.5, 1"
 Nettle_jll = "3.10.1"
 SIMD = "3.2.1"
