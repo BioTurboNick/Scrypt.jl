@@ -121,7 +121,7 @@ function load_store!(workingbuffer::AbstractVector{Salsa512}, scryptelement::Abs
 end
 
 function mixwithscryptblock!(workingbuffer::AbstractVector{Salsa512}, scryptblock::AbstractMatrix{Salsa512}, shufflebuffer::AbstractVector{Salsa512}, r, N)
-    for i ∈ 1:N
+    for _ ∈ 1:N
         n = integerify(workingbuffer, N)
         scryptelement = reshape(view(scryptblock, :, n), 2r)
 
@@ -164,7 +164,7 @@ function salsa20(block, iterations)
     inputblock = block
 
     lines = splitblock(block)
-    for i ∈ 1:iterations
+    for _ ∈ 1:iterations
         lines = salsamix(lines)
         lines = salsatranspose(lines)
     end
