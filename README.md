@@ -34,9 +34,13 @@ Optimization notes:
  - Implemented memory-aligned and nontemporal load/store methods for fill/mix functions: 150.639 ms (524678 allocations: 88.07 MiB) (commit 857cd7a92a797bd67ca22d684e051432d6f7e48d)
  - Got rid of an internal array I had introduced in the inner loop accidentally: 85.645 ms (390 allocations: 16.07 MiB) (commit 6a48816057494a1770c9406723440216da68df97)
  - Implemented nontemporal store instructions, increased time a bit, but more secure: 90.233 ms (390 allocations: 16.07 MiB)
- - Added @inbounds to load/store methods: 79.289 ms (390 allocations: 16.07 MiB)
+ - Added @inbounds to load/store methods: 79.289 ms (390 allocations: 16.07 MiB); v0.2.1
+ - New computer at this point, so timings don't exactly match: 66.476 ms (11276 allocations: 20.94 MiB); I suspect the change from Array to Memory inside Julia is partly responsible for this.
+ - Switched away from  `permute!`/`invpermute!` in favor of `getindex`/`setindex`, as documentation advises, to avoid their internal allocations
+ - Revised `pbkdf2_sha256_1` to avoid repeated allocations of the HMAC state from inside Nettle.
+ - Switched from SIMD.jl operations to broadcasted Tuple operations in inner loop (macro expansion for `@simd` seems to be heavy): 55.997 ms (742 allocations: 16.07 MiB); this change more greatly impacted performance of higher `p` parameter as well by allowing buffer reuse between iterations.
 
  16 MiB is about the lower limit of allocation amount for the parameters I was using.
 
 
- End result: Only ~2 times slower than my original C++/C# package, after starting ~525 times slower. A bit more optimization to try to squeeze out.
+ End result: About matches performance of my original C++/C# package, after starting ~525 times slower.
