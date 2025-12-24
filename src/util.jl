@@ -51,7 +51,7 @@ if VERSION < v"1.10"
         GC.@preserve in out begin
             ptr_in = Base.unsafe_convert(Ptr{UInt32}, in)
             ptr_out = Base.unsafe_convert(Ptr{NTuple{4, UInt8}}, out)
-            Base.memcpy(ptr_out, ptr_in, sizeof(NTuple{4, UInt8}))
+            Base._memcpy(ptr_out, ptr_in, sizeof(NTuple{4, UInt8}))
         end
         return out[]
     end
