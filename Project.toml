@@ -12,7 +12,7 @@ SIMD = "fdea26ae-647d-5447-a871-4b548cad5224"
 Nettle = "0.5, 1"
 Nettle_jll = "3.10.1"
 SIMD = "3.2.1"
-julia = "1.5"
+julia = "1.6"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
