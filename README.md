@@ -42,6 +42,6 @@ Optimization notes:
 
  16 MiB is about the lower limit of allocation amount for the parameters I was using.
 
-
  End result: About matches performance of my original C++/C# package, after starting ~525 times slower.
+
 
