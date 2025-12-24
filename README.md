@@ -9,8 +9,6 @@ I make no guarantees other than that it passes the test vectors from the origina
 
 Skryptonite code is more fully documented, if you wish to understand the logic. But in brief, the data is rearranged for optimal internal operations by placing the last block first and organizing the internal matrix blocks so that the diagonals are moved into columns.
 
-One thing this lacks right now is parallelization for the p parameter.
-
 Example:
 ```
 r = 8
@@ -20,6 +18,7 @@ key = Vector{UInt8}(b"pleaseletmein")
 salt = Vector{UInt8}(b"SodiumChloride")
 derivedkeylength = 64 # bytes
 scrypt(ScryptParameters(r, N, p), key, salt, derivedkeylength)
+scrypt(ScryptParameters(r, N, p), key, salt, derivedkeylength; ntasks = 1) # use single thread instead of default Threads.nthreads() threads.
 ```
 
 Optimization notes:
@@ -43,5 +42,6 @@ Optimization notes:
  16 MiB is about the lower limit of allocation amount for the parameters I was using.
 
  End result: About matches performance of my original C++/C# package, after starting ~525 times slower.
+
 
 
